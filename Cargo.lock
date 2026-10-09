@@ -167,27 +167,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "effect-async"
-version = "0.1.0"
-dependencies = [
- "effect-core",
- "tokio",
-]
-
-[[package]]
-name = "effect-core"
-version = "0.1.0"
-
-[[package]]
-name = "effect-rs"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "effect-async",
- "effect-core",
-]
-
-[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -276,6 +255,27 @@ name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+
+[[package]]
+name = "machine-async"
+version = "0.1.0"
+dependencies = [
+ "machine-core",
+ "tokio",
+]
+
+[[package]]
+name = "machine-core"
+version = "0.1.0"
+
+[[package]]
+name = "machine-rs"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "machine-async",
+ "machine-core",
+]
 
 [[package]]
 name = "memchr"

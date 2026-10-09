@@ -1,66 +1,92 @@
-# Algebraic Effects in Rust (`effect-rs`)
+# Machine RS (`machine-rs`)
 
-[![CI](https://github.com/ulquiorracode/effect-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ulquiorracode/effect-rs/actions)
+[![CI](https://github.com/ulquiorracode/machine-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ulquiorracode/machine-rs/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 
-Zero-Cost, Monomorphic **Algebraic Effects** for Rust.
-
-Eliminates the **function coloring problem** (`async`/`await`, `throws`, IO contagion) by strictly decoupling domain intentions (algebraic effects) from execution environments (handlers).
+Universal, Zero-Cost State Machine Kernel for Rust unifying **1-Way Generators/Iterators** and **2-Way Algebraic Effects/Futures** under a single monomorphic finite state machine.
 
 ---
 
-## The Vision: Uncolored, Pure Logic
+## The Vision: Unifying Control Flow without Colored Functions
 
-In standard Rust, an IO or concurrency requirement at the leaf of a call graph contaminates the entire stack with `async fn`, `.await`, `Send + 'static` lifetimes, and runtime bindings.
+In modern programming languages, control flow is fragmented:
+- **Pull streams** are written via `Iterator`.
+- **Generators** are trapped in unstable RFCs (`gen` / `yield`).
+- **I/O & Concurrency** infect codebases with colored `async fn` and runtime locks.
 
-With **Algebraic Effects**:
-1. **Functions are uncolored and pure**: They simply yield data models representing effects.
-2. **Handlers decide the environment**:
-   - In unit tests: Synchronous, instant mock responses without network or mocks.
-   - In embedded/game loop (`no_std`): Zero-allocation contiguous stack execution.
-   - In servers: Asynchronous Tokio execution without polluting domain code with `async`.
-
----
-
-## Architectural Taxonomy
+`machine-rs` provides a mathematically unified **FSM Kernel** (`Machine<Yield, Resume, Return>`):
 
 ```
-+-----------------------------------------------------------+
-| Pure Domain / Business Logic (NO_STD, ZERO ASYNC)         |
-|                                                           |
-| StateMachine yields Effect::Ask { prompt }                |
-+-----------------------------------------------------------+
-                              |
-                              v
-+-----------------------------------------------------------+
-| Environment Handler (effect_match! / handle_sync / async) |
-|                                                           |
-| effect_match!(machine, {                                  |
-|     perform Effect::Ask(prompt) => resume!("Alice"),      |
-|     return user => println!("Done: {user}"),              |
-| })                                                        |
-+-----------------------------------------------------------+
+                                  [ Machine<Yield, Resume, Return> ]
+                                                  |
+                 +--------------------------------+--------------------------------+
+                 | (1-Way: Sink / Stream)                          | (2-Way: Dialogue / Protocol)
+                 v                                                 v
+        [ Generators ]                                   [ Algebraic Effects ]
+        Resume = ()                                      Resume = Option<Response>
+                 |                                                 |
+                 +---> core::iter::Iterator                        +---> Pure Synchronous Mocks (1ns)
+                 +---> Inlined CPU loops                           +---> Tokio / Network I/O Driver
 ```
 
 ---
 
-## Ergonomics: `effect_match!` Syntax
+## 1-Way Projection: Generators & Iterators
 
-Mirroring the cleanest algebraic effects syntax:
+A generator is a state machine whose resumption payload is the Zero-Sized Type `()` (`Resume = ()`).
+LLVM mem2reg completely eliminates `Resume = ()`, compiling `.into_iter()` loops into **zero-overhead, bit-for-bit identical assembly** to native Rust while loops.
 
 ```rust
-use effect_rs::prelude::*;
+use machine_rs::prelude::*;
 
-let result = effect_match!(machine, {
-    perform AppEffect::Ping(_ping) => {
-        "Pong"
+struct Fibonacci {
+    a: u64,
+    b: u64,
+    count: usize,
+    max: usize,
+}
+
+impl Machine for Fibonacci {
+    type Yield = u64;
+    type Resume = ();
+    type Return = ();
+
+    fn step(&mut self, _resume: ()) -> Step<Self::Yield, Self::Return> {
+        if self.count < self.max {
+            let next = self.a;
+            let sum = self.a + self.b;
+            self.a = self.b;
+            self.b = sum;
+            self.count += 1;
+            Step::Yielded(next)
+        } else {
+            Step::Done(())
+        }
     }
-    perform AppEffect::Ask(prompt) => {
-        "Alice"
-    }
-    return val => {
-        val
-    }
+}
+
+// Convert seamlessly into a standard Rust Iterator:
+let fib = Fibonacci { a: 0, b: 1, count: 0, max: 10 };
+let sum: u64 = fib.into_iter().sum();
+```
+
+---
+
+## 2-Way Projection: Typed Open Algebraic Effects
+
+Domain logic remains uncolored and pure by yielding typed effect tokens. Execution environments handle effects deterministically:
+
+```rust
+use machine_rs::prelude::*;
+
+struct AskName;
+impl Effect for AskName {
+    type Response = &'static str;
+}
+
+// Run in unit-tests with zero allocations and zero runtime:
+let name = handle_sync(my_machine, |eff| {
+    Some("Alice")
 });
 ```
 
@@ -68,10 +94,9 @@ let result = effect_match!(machine, {
 
 ## Workspace Structure
 
-- [`effect-core`](crates/effect-core): `#![no_std]` foundational contracts (`Effect`, `EffectMachine`, `Step`, `handle_sync`).
-- [`effect-macros`](crates/effect-macros): Procedural macros and declarative syntactic sugar (`effect_match!`).
-- [`effect-async`](crates/effect-async): Asynchronous runtime bridge and driver (`handle_async`).
-- [`effect-rs`](crates/effect-rs): Root facade crate.
+- [`machine-core`](crates/machine-core): `#![no_std]` core kernel contracts (`Machine`, `Step`, `Generator`, `GenIter`, `Effect`, `Either`).
+- [`machine-async`](crates/machine-async): Thread-safe `handle_async` Tokio driver bridge.
+- [`machine-rs`](crates/machine-rs): Root facade re-exporting the full engine and extension traits (`MachineExt`).
 
 ---
 

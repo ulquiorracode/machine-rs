@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/effect-core",
-    "crates/effect-async",
-    "crates/effect-rs",
+    "crates/machine-core",
+    "crates/machine-async",
+    "crates/machine-rs",
 ]
 resolver = "2"
 
@@ -12,14 +12,14 @@ edition = "2024"
 rust-version = "1.85.0"
 authors = ["UlquiorraCode Contributors"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ulquiorracode/effect-rs"
-keywords = ["effects", "algebraic-effects", "coroutines", "zero-cost", "no-std"]
+repository = "https://github.com/ulquiorracode/machine-rs"
+keywords = ["state-machine", "fsm", "generators", "effects", "zero-cost"]
 categories = ["rust-patterns", "asynchronous", "no-std"]
 
 [workspace.dependencies]
-effect-core = { path = "crates/effect-core", version = "0.1.0" }
-effect-async = { path = "crates/effect-async", version = "0.1.0" }
-effect-rs = { path = "crates/effect-rs", version = "0.1.0" }
+machine-core = { path = "crates/machine-core", version = "0.1.0" }
+machine-async = { path = "crates/machine-async", version = "0.1.0" }
+machine-rs = { path = "crates/machine-rs", version = "0.1.0" }
 
 criterion = "0.5"
 tokio = { version = "1.43", default-features = false, features = ["macros", "rt", "sync"] }

@@ -1,28 +1,28 @@
 [package]
-name = "effect-rs"
+name = "machine-rs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Algebraic Effects in Rust: Uncolored, Zero-Cost, Monomorphic State Machines"
+description = "Universal State Machine Kernel for Rust: Unifying Generators, Iterators, and Algebraic Effects"
 keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
 
 [features]
 default = ["std"]
-std = ["effect-core/std"]
-async = ["dep:effect-async"]
+std = ["machine-core/std"]
+async = ["dep:machine-async"]
 
 [dependencies]
-effect-core = { workspace = true }
-effect-async = { workspace = true, optional = true }
+machine-core = { workspace = true }
+machine-async = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
 
 [[bench]]
-name = "baseline_bench"
+name = "generator_bench"
 harness = false

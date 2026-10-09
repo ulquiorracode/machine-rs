@@ -1,18 +1,19 @@
 [package]
-name = "effect-core"
+name = "machine-async"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Zero-cost, #![no_std] foundational engine and formal contracts for Algebraic Effects in Rust"
+description = "Asynchronous Future and Tokio driver adapter for machine-rs"
 keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
 
-[features]
-default = ["std"]
-std = []
-
 [dependencies]
+machine-core = { workspace = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
