@@ -1,9 +1,19 @@
-# Contributing
+# Contributing to `effect-rs`
 
-## Engineering Standards
+Thank you for your interest in contributing to `effect-rs`!
 
-1. **Mechanical Sympathy**: Design with CPU cache lines (64B) and zero-allocation hot paths.
-2. **Explicit Failure**: No silent error swallowing or fake fallbacks.
-3. **Conventional Commits**: Every commit must follow `<type>(<scope>): <message>`.
-4. **Branching Model**: Active development takes place on `dev`. Production tags on `main`.
-5. **Zero Emojis**: Emojis are strictly forbidden across code, commits, issues, and PRs.
+## Code Quality Standards
+
+1. **Strict `#![no_std]` Core**: `effect-core` must remain zero-dependency and 100% `#![no_std]`.
+2. **Zero-Allocation Discipline**: The hot dispatch path must not allocate heap memory (`Box`, `Vec`, `String`).
+3. **No Unsafe without Explanation**: Every `unsafe` block requires a `// SAFETY:` invariant comment.
+4. **Formatting & Lints**:
+   - `cargo fmt --all -- --check`
+   - `cargo clippy --all-targets --all-features -- -D warnings`
+   - `cargo test --all-targets`
+
+## Branching Strategy
+
+- `main` — Production/stable releases only.
+- `dev` — Active development integration branch. All PRs must target `dev`.
+- `feature/<name>` — Feature branches.

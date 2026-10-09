@@ -9,9 +9,6 @@
 
 pub use effect_core::*;
 
-#[cfg(feature = "macros")]
-pub use effect_macros::*;
-
 #[cfg(feature = "async")]
 pub use effect_async::*;
 
@@ -19,8 +16,6 @@ pub mod prelude {
     #[cfg(feature = "async")]
     pub use effect_async::handle_async;
     pub use effect_core::prelude::*;
-    #[cfg(feature = "macros")]
-    pub use effect_macros::effect_match;
 }
 
 #[cfg(test)]
@@ -62,18 +57,14 @@ mod tests {
     }
 
     #[test]
-    fn test_facade_and_effect_match_macro() {
+    fn test_facade_and_macro_match() {
         let machine = SimpleMachine(SimpleState::Init);
 
         let result = effect_match!(machine, {
-            perform AppEffect::Ping(_ping) => {
-                "Pong"
-            }
-            return greeting => {
-                greeting
-            }
+            perform AppEffect::Ping(_ping) => EffectDecision::Resume("Pong"),
+            return greeting => greeting,
         });
 
-        assert_eq!(result, "Pong");
+        assert_eq!(result, Some("Pong"));
     }
 }

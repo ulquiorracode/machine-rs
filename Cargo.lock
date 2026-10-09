@@ -179,23 +179,12 @@ name = "effect-core"
 version = "0.1.0"
 
 [[package]]
-name = "effect-macros"
-version = "0.1.0"
-dependencies = [
- "effect-core",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "effect-rs"
 version = "0.1.0"
 dependencies = [
  "criterion",
  "effect-async",
  "effect-core",
- "effect-macros",
 ]
 
 [[package]]

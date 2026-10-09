@@ -12,15 +12,17 @@ categories.workspace = true
 readme = "README.md"
 
 [features]
-default = ["std", "macros"]
+default = ["std"]
 std = ["effect-core/std"]
-macros = ["dep:effect-macros"]
 async = ["dep:effect-async"]
 
 [dependencies]
 effect-core = { workspace = true }
-effect-macros = { workspace = true, optional = true }
 effect-async = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+
+[[bench]]
+name = "baseline_bench"
+harness = false

@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/effect-core",
-    "crates/effect-macros",
     "crates/effect-async",
     "crates/effect-rs",
 ]
@@ -19,13 +18,9 @@ categories = ["rust-patterns", "asynchronous", "no-std"]
 
 [workspace.dependencies]
 effect-core = { path = "crates/effect-core", version = "0.1.0" }
-effect-macros = { path = "crates/effect-macros", version = "0.1.0" }
 effect-async = { path = "crates/effect-async", version = "0.1.0" }
 effect-rs = { path = "crates/effect-rs", version = "0.1.0" }
 
-syn = { version = "2.0", features = ["full", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = "1.0"
 criterion = "0.5"
 tokio = { version = "1.43", default-features = false, features = ["macros", "rt", "sync"] }
 
@@ -33,5 +28,5 @@ tokio = { version = "1.43", default-features = false, features = ["macros", "rt"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true

@@ -1,31 +1,40 @@
 //! Asynchronous runtime bridge and driver for `effect-rs`.
 //!
 //! Allows running pure, uncolored effectful state machines on asynchronous runtimes
-//! (e.g. Tokio) by resolving yielded effects via async handler futures.
+//! (e.g. Tokio) by resolving yielded effects via thread-safe async handler futures.
 
 use core::future::Future;
-use effect_core::{Effect, EffectMachine, Step};
+use effect_core::{Effect, EffectDecision, EffectMachine, Step};
 
-/// Drives an [`EffectMachine`] to completion asynchronously.
+/// Drives an [`EffectMachine`] to completion asynchronously with full thread-safety (`Send`).
 ///
 /// Yielded effects are dispatched to an async closure/future `handler`,
 /// which resolves them (e.g., performing database, network, or file I/O).
 ///
 /// The state machine itself remains completely synchronous, uncolored, and `#![no_std]`.
-pub async fn handle_async<M, H, Fut>(mut machine: M, mut handler: H) -> M::Output
+pub async fn handle_async<M, H, Fut>(mut machine: M, mut handler: H) -> Option<M::Output>
 where
-    M: EffectMachine,
-    H: FnMut(M::Effect) -> Fut,
-    Fut: Future<Output = <M::Effect as Effect>::Resume>,
+    M: EffectMachine + Send,
+    H: FnMut(M::Effect) -> Fut + Send,
+    Fut: Future<Output = EffectDecision<<M::Effect as Effect>::Resume>> + Send,
 {
     let mut resume_val = None;
     loop {
         match machine.resume(resume_val.take()) {
-            Step::Yielded(effect) => {
-                let response = handler(effect).await;
-                resume_val = Some(response);
+            Step::Yielded(effect) => match handler(effect).await {
+                EffectDecision::Resume(response) => {
+                    resume_val = Some(response);
+                }
+                EffectDecision::Abort => {
+                    machine.close();
+                    return None;
+                }
+            },
+            Step::Done(output) => return Some(output),
+            Step::Aborted => {
+                machine.close();
+                return None;
             }
-            Step::Done(output) => return output,
         }
     }
 }
@@ -79,14 +88,27 @@ mod tests {
             state: FetchState::Init,
         };
 
-        let status = handle_async(machine, |effect| async move {
-            assert_eq!(effect.url, "https://api.example.com");
-            // Simulate async network I/O
-            tokio::task::yield_now().await;
-            200
-        })
-        .await;
+        // Ensure future is Send and can be spawned on Tokio
+        let handle = tokio::spawn(async move {
+            handle_async(machine, |effect| async move {
+                assert_eq!(effect.url, "https://api.example.com");
+                EffectDecision::Resume(200)
+            })
+            .await
+        });
 
-        assert_eq!(status, 200);
+        let status = handle.await.unwrap();
+        assert_eq!(status, Some(200));
+    }
+
+    #[tokio::test]
+    async fn test_handle_async_abort() {
+        let machine = FetchMachine {
+            state: FetchState::Init,
+        };
+
+        let status = handle_async(machine, |_effect| async move { EffectDecision::Abort }).await;
+
+        assert_eq!(status, None);
     }
 }

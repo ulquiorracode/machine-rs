@@ -1,12 +1,9 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported |
-| ------- | --------- |
-| 0.1.x   | Yes       |
-
 ## Reporting a Vulnerability
 
-Please report vulnerabilities privately via GitHub Security Advisories.
-Maintainers will respond promptly and coordinate patches.
+If you discover a security vulnerability within `effect-rs`, please do **not** open a public issue.
+
+Instead, please send an advisory report to the maintainer via GitHub security advisories or via maintainer profile: [@ulquiorracode](https://github.com/ulquiorracode).
+
+All security vulnerabilities will be promptly reviewed, and patches will be released in priority hotfix releases.
