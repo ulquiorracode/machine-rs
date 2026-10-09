@@ -1,0 +1,19 @@
+[package]
+name = "effect-async"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Asynchronous runtime bridge and Tokio driver for Algebraic Effects in Rust"
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[dependencies]
+effect-core = { workspace = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

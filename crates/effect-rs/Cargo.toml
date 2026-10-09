@@ -1,0 +1,26 @@
+[package]
+name = "effect-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Algebraic Effects in Rust: Uncolored, Zero-Cost, Monomorphic State Machines"
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[features]
+default = ["std", "macros"]
+std = ["effect-core/std"]
+macros = ["dep:effect-macros"]
+async = ["dep:effect-async"]
+
+[dependencies]
+effect-core = { workspace = true }
+effect-macros = { workspace = true, optional = true }
+effect-async = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
