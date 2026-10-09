@@ -270,7 +270,6 @@ pub mod fixtures {
         }
     }
 
-
     impl Machine for GreetFSM {
         type Yield = GreetEffect;
         type Resume = ResumeSignal<&'static str>;
