@@ -36,7 +36,7 @@ jobs:
         run: cargo test --all-targets
 
       - name: Verify #![no_std] Core Build
-        run: cargo check --no-default-features -p effect-core
+        run: cargo check --no-default-features -p machine-core
 
       - name: Smoke Test Benchmark Harness
         run: cargo bench --no-run
