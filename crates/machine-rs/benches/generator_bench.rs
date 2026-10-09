@@ -23,8 +23,6 @@ impl Machine for CounterGen {
     }
 }
 
-impl FusedMachine for CounterGen {}
-
 struct NativeCounter {
     curr: u64,
     max: u64,

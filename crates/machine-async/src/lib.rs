@@ -24,7 +24,11 @@ where
                     signal = ResumeSignal::Resume(resp);
                 }
                 None => {
-                    let _ = machine.step(ResumeSignal::Abort);
+                    let abort_step = machine.step(ResumeSignal::Abort);
+                    debug_assert!(
+                        matches!(abort_step, Step::Done(_)),
+                        "machine yielded effect on abort signal rather than terminating"
+                    );
                     machine.close();
                     return None;
                 }
@@ -54,14 +58,23 @@ mod tests {
 
     struct FetchMachine {
         state: FetchState,
-        close_count: usize,
+        close_counter: Option<std::sync::Arc<core::sync::atomic::AtomicUsize>>,
     }
 
     impl FetchMachine {
         pub const fn new() -> Self {
             Self {
                 state: FetchState::Init,
-                close_count: 0,
+                close_counter: None,
+            }
+        }
+
+        pub fn with_close_counter(
+            counter: std::sync::Arc<core::sync::atomic::AtomicUsize>,
+        ) -> Self {
+            Self {
+                state: FetchState::Init,
+                close_counter: Some(counter),
             }
         }
     }
@@ -100,7 +113,9 @@ mod tests {
         }
 
         fn close(&mut self) {
-            self.close_count += 1;
+            if let Some(ref counter) = self.close_counter {
+                counter.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
 
@@ -122,9 +137,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_tokio_driver_abort() {
-        let machine = FetchMachine::new();
+        use core::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let machine = FetchMachine::with_close_counter(counter.clone());
 
         let status = handle_async(machine, |_eff| async move { None }).await;
         assert_eq!(status, None);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 }

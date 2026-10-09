@@ -73,8 +73,6 @@ impl Machine for RangeGen {
     }
 }
 
-impl FusedMachine for RangeGen {}
-
 struct MathEffect(u64);
 impl Effect for MathEffect {
     type Response = u64;

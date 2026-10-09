@@ -3,8 +3,7 @@
 //! Universal Zero-Cost State Machine Kernel unifying:
 //! - **1-Way Control Flow**: [`Generator`] & [`GenIter`] (projections into `core::iter::Iterator`).
 //! - **2-Way Control Flow**: [`Effect`] and synchronous drivers.
-//! - **Kernel FSM**: [`Machine`], [`Step`], and [`FusedMachine`].
-
+//! - **Kernel FSM**: [`Machine`] and [`Step`].
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
@@ -42,9 +41,6 @@ pub trait Machine {
     #[inline]
     fn close(&mut self) {}
 }
-
-/// Marker trait for machines guaranteeing idempotent termination (safe double-polling).
-pub trait FusedMachine: Machine {}
 
 // ============================================================================
 // 2. 1-WAY PROJECTION: GENERATORS & ITERATORS
@@ -119,23 +115,6 @@ pub enum ResumeSignal<R> {
     Abort,
 }
 
-impl<R> ResumeSignal<R> {
-    /// Unwraps the response payload or returns `None` if this was `Start` or `Abort`.
-    #[inline(always)]
-    pub fn response(self) -> Option<R> {
-        match self {
-            Self::Resume(r) => Some(r),
-            Self::Start | Self::Abort => None,
-        }
-    }
-
-    /// True if the signal is `Abort`.
-    #[inline(always)]
-    pub const fn is_abort(&self) -> bool {
-        matches!(self, Self::Abort)
-    }
-}
-
 /// Synchronously drives an effect machine to completion using a handler closure.
 ///
 /// Calls [`Machine::close`] deterministically if the handler aborts (returns `None`).
@@ -156,7 +135,11 @@ where
                     }
                     None => {
                         // Notify machine of early abort, then close
-                        let _ = machine.step(ResumeSignal::Abort);
+                        let abort_step = machine.step(ResumeSignal::Abort);
+                        debug_assert!(
+                            matches!(abort_step, Step::Done(_)),
+                            "machine yielded effect on abort signal rather than terminating"
+                        );
                         machine.close();
                         return None;
                     }
@@ -188,8 +171,7 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        Effect, FusedMachine, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step,
-        handle_sync,
+        Effect, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
     };
 }
 
@@ -234,8 +216,6 @@ pub mod fixtures {
         }
     }
 
-    impl FusedMachine for RangeGen {}
-
     pub struct GreetEffect {
         pub prompt: &'static str,
     }
@@ -250,27 +230,34 @@ pub mod fixtures {
         Aborted,
     }
 
-    pub struct GreetFSM {
+    pub struct GreetFSM<'a> {
         pub state: GreetState,
-        pub close_calls: usize,
+        pub close_counter: Option<&'a core::sync::atomic::AtomicUsize>,
     }
 
-    impl Default for GreetFSM {
+    impl Default for GreetFSM<'_> {
         fn default() -> Self {
             Self::new()
         }
     }
 
-    impl GreetFSM {
+    impl<'a> GreetFSM<'a> {
         pub const fn new() -> Self {
             Self {
                 state: GreetState::Init,
-                close_calls: 0,
+                close_counter: None,
+            }
+        }
+
+        pub const fn with_close_counter(counter: &'a core::sync::atomic::AtomicUsize) -> Self {
+            Self {
+                state: GreetState::Init,
+                close_counter: Some(counter),
             }
         }
     }
 
-    impl Machine for GreetFSM {
+    impl Machine for GreetFSM<'_> {
         type Yield = GreetEffect;
         type Resume = ResumeSignal<&'static str>;
         type Return = &'static str;
@@ -302,7 +289,9 @@ pub mod fixtures {
         }
 
         fn close(&mut self) {
-            self.close_calls += 1;
+            if let Some(counter) = self.close_counter {
+                counter.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
 }
@@ -338,11 +327,13 @@ mod tests {
 
     #[test]
     fn test_two_way_effect_abort_triggers_close() {
-        let mut machine = GreetFSM::new();
-        let close_counter = &mut machine.close_calls;
-        *close_counter = 0;
+        use core::sync::atomic::{AtomicUsize, Ordering};
+
+        let counter = AtomicUsize::new(0);
+        let machine = GreetFSM::with_close_counter(&counter);
 
         let result = handle_sync(machine, |_eff| None);
         assert_eq!(result, None);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 }

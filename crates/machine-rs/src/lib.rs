@@ -7,7 +7,7 @@
 
 // Explicit re-exports rather than wildcard glob
 pub use machine_core::{
-    Effect, FusedMachine, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
+    Effect, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
 };
 
 #[cfg(feature = "async")]
@@ -62,8 +62,6 @@ mod tests {
             }
         }
     }
-
-    impl FusedMachine for Fibonacci {}
 
     #[test]
     fn test_fibonacci_into_iter() {
