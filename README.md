@@ -23,9 +23,9 @@ In modern programming languages, control flow is fragmented:
                  | (1-Way: Sink / Stream)                          | (2-Way: Dialogue / Protocol)
                  v                                                 v
         [ Generators ]                                   [ Algebraic Effects ]
-        Resume = ()                                      Resume = Option<Response>
+        Resume = ()                                      Resume = ResumeSignal<Response>
                  |                                                 |
-                 +---> core::iter::Iterator                        +---> Pure Synchronous Mocks (1ns)
+                 +---> core::iter::Iterator                        +---> Pure Synchronous Mocks
                  +---> Inlined CPU loops                           +---> Tokio / Network I/O Driver
 ```
 
@@ -34,7 +34,7 @@ In modern programming languages, control flow is fragmented:
 ## 1-Way Projection: Generators & Iterators
 
 A generator is a state machine whose resumption payload is the Zero-Sized Type `()` (`Resume = ()`).
-LLVM mem2reg completely eliminates `Resume = ()`, compiling `.into_iter()` loops into **zero-overhead, bit-for-bit identical assembly** to native Rust while loops.
+LLVM mem2reg eliminates the zero-sized argument, compiling `.into_iter()` loops into tight, inlined assembly.
 
 ```rust
 use machine_rs::prelude::*;
@@ -54,7 +54,7 @@ impl Machine for Fibonacci {
     fn step(&mut self, _resume: ()) -> Step<Self::Yield, Self::Return> {
         if self.count < self.max {
             let next = self.a;
-            let sum = self.a + self.b;
+            let sum = self.a.saturating_add(self.b);
             self.a = self.b;
             self.b = sum;
             self.count += 1;
@@ -72,7 +72,7 @@ let sum: u64 = fib.into_iter().sum();
 
 ---
 
-## 2-Way Projection: Typed Open Algebraic Effects
+## 2-Way Projection: Typed Algebraic Effects
 
 Domain logic remains uncolored and pure by yielding typed effect tokens. Execution environments handle effects deterministically:
 
@@ -94,7 +94,7 @@ let name = handle_sync(my_machine, |eff| {
 
 ## Workspace Structure
 
-- [`machine-core`](crates/machine-core): `#![no_std]` core kernel contracts (`Machine`, `Step`, `Generator`, `GenIter`, `Effect`, `Either`).
+- [`machine-core`](crates/machine-core): `#![no_std]` core kernel contracts (`Machine`, `Step`, `Generator`, `GenIter`, `Effect`, `ResumeSignal`).
 - [`machine-async`](crates/machine-async): Thread-safe `handle_async` Tokio driver bridge.
 - [`machine-rs`](crates/machine-rs): Root facade re-exporting the full engine and extension traits (`MachineExt`).
 

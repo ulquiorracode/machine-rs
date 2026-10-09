@@ -5,15 +5,20 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use machine_core::*;
+// Explicit re-exports rather than wildcard glob
+pub use machine_core::{
+    Effect, FusedMachine, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
+};
 
 #[cfg(feature = "async")]
-pub use machine_async::*;
+pub use machine_async::handle_async;
 
+/// Common prelude for `machine-rs`.
 pub mod prelude {
+    pub use machine_core::prelude::*;
+
     #[cfg(feature = "async")]
     pub use machine_async::handle_async;
-    pub use machine_core::prelude::*;
 }
 
 #[cfg(test)]
@@ -46,7 +51,8 @@ mod tests {
         fn step(&mut self, _resume: ()) -> Step<Self::Yield, Self::Return> {
             if self.count < self.max {
                 let next = self.a;
-                let sum = self.a + self.b;
+                // Checked saturating addition prevents panic or silent overflow
+                let sum = self.a.saturating_add(self.b);
                 self.a = self.b;
                 self.b = sum;
                 self.count += 1;

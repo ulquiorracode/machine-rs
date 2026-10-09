@@ -1,50 +1,51 @@
-# Architecture Specification (`effect-rs`)
+# Architecture Specification (`machine-rs`)
 
 ## Theoretical Foundations
 
-Algebraic Effects decouple **what** a program intends to do (the effect) from **how** that intention is executed (the handler).
+`machine-rs` provides a mathematically grounded, stackless **Finite State Machine (FSM) Kernel** that unifies two fundamental branches of program control flow:
 
-In contrast to monadic I/O or colored functions (`async`/`await`), algebraic effects preserve the purity and uncolored nature of functions across arbitrarily deep call chains.
+1. **1-Way Control Flow (Generators & Iterators)**:
+   - Data flows strictly outward from the producer to the consumer.
+   - Resumption carries the Zero-Sized Type `()`.
+   - Projects zero-cost into `core::iter::Iterator`.
+
+2. **2-Way Control Flow (Algebraic Effects & Co-routines)**:
+   - Computation yields an intention (`Effect`) to the execution environment.
+   - Environment evaluates the effect and injects a typed response via [`ResumeSignal`].
+   - Supports deterministic cancellation and cooperative abortion without process panics.
 
 ```
-+----------------------------------------------------------------------+
-| Pure Domain Logic (Uncolored fn, #![no_std], Zero Dependencies)      |
-|                                                                      |
-| let user_id = perform!(Ask { prompt: "ID?" });                       |
-| perform!(Log { message: "Loaded" });                                 |
-+----------------------------------------------------------------------+
-                                  |
-                                  | Yielded(Effect)
-                                  v
-+----------------------------------------------------------------------+
-| Environment Execution Driver (handle_sync / handle_async)             |
-|                                                                      |
-| - Sync Mode: Instant pure resolution via array / mock (0 alloc, 1ns) |
-| - Async Mode: Tokio socket / DB pool resolution at application edge  |
-| - Abort Protocol: Step::Aborted cleans resources without panic       |
-+----------------------------------------------------------------------+
+                                  [ Machine<Yield, Resume, Return> ]
+                                                  |
+                 +--------------------------------+--------------------------------+
+                 | (1-Way: Generator / Sink)                       | (2-Way: Effect / Protocol)
+                 v                                                 v
+        [ Generator ]                                     [ Effect ]
+        Resume = ()                                       Resume = ResumeSignal<Response>
+                 |                                                 |
+                 +---> GenIter<M> -> Iterator                      +---> handle_sync (Deterministic in-memory)
+                 +---> Inlined LLVM loop heads                     +---> handle_async (Tokio network I/O)
 ```
 
-## State Machine Representation (FSM)
+---
 
-An effectful computation is modeled as a monomorphic, stackless finite state machine implementing [`EffectMachine`]:
+## The FSM Kernel Contract
+
+All machines implement the foundational [`Machine`] trait:
 
 ```rust
-pub trait EffectMachine {
-    type Effect: Effect;
-    type Output;
+pub trait Machine {
+    type Yield;
+    type Resume;
+    type Return;
 
-    fn resume(
-        &mut self,
-        resume: Option<<Self::Effect as Effect>::Resume>,
-    ) -> Step<Self::Effect, Self::Output>;
+    fn step(&mut self, resume: Self::Resume) -> Step<Self::Yield, Self::Return>;
 
-    fn close(&mut self);
+    fn close(&mut self) {}
 }
 ```
 
 ### Transition Invariants
-1. **Initial Step**: Called with `resume = None`. Must either yield an effect or complete immediately.
-2. **Intermediate Steps**: Called with `resume = Some(val)` corresponding to the previously yielded effect.
-3. **Completion**: Transitions to `Step::Done(output)`. Subsequent resume calls are contract violations.
-4. **Abort Protocol**: If the handler chooses not to resume the computation, `close()` is invoked to trigger resource cleanups deterministically without triggering panics.
+1. **The Single-Return Invariant**: Once `step` yields `Step::Done(return_value)`, the machine has reached terminal completion. Subsequent calls to `step` are contract violations.
+2. **GenIter Termination Cache**: [`GenIter`] caches the completion state (`is_done = true`) and guarantees that trailing calls to `Iterator::next()` return `None` without ever polling the underlying machine again.
+3. **Cancellation Protocol**: When an environment handler declines to service an effect (returns `None`), the machine is signaled with `ResumeSignal::Abort`, and `Machine::close()` is invoked deterministically to release external handles or locks.

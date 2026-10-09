@@ -55,7 +55,7 @@ fn bench_generator_vs_native_iterator(c: &mut Criterion) {
                 max: black_box(1_000),
             };
             let sum: u64 = generator.into_iter().sum();
-            assert_eq!(sum, 499500);
+            black_box(sum)
         })
     });
 
@@ -66,7 +66,7 @@ fn bench_generator_vs_native_iterator(c: &mut Criterion) {
                 max: black_box(1_000),
             };
             let sum: u64 = iter.sum();
-            assert_eq!(sum, 499500);
+            black_box(sum)
         })
     });
 

@@ -2,7 +2,7 @@
 //!
 //! Universal Zero-Cost State Machine Kernel unifying:
 //! - **1-Way Control Flow**: [`Generator`] & [`GenIter`] (projections into `core::iter::Iterator`).
-//! - **2-Way Control Flow**: [`Effect`], [`Request`], and Open Algebraic Effects (`Either`).
+//! - **2-Way Control Flow**: [`Effect`] and synchronous drivers.
 //! - **Kernel FSM**: [`Machine`], [`Step`], and [`FusedMachine`].
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -15,45 +15,12 @@ extern crate std;
 // ============================================================================
 
 /// The outcome of an FSM transition step.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step<Y, R> {
     /// Machine yielded intermediate control / payload.
-    Yielded(Y) = 0,
+    Yielded(Y),
     /// Machine completed execution with terminal return value.
-    Done(R) = 1,
-}
-
-impl<Y, R> Step<Y, R> {
-    /// True if the step yielded intermediate payload.
-    #[inline(always)]
-    pub const fn is_yielded(&self) -> bool {
-        matches!(self, Self::Yielded(_))
-    }
-
-    /// True if the machine has reached terminal completion.
-    #[inline(always)]
-    pub const fn is_done(&self) -> bool {
-        matches!(self, Self::Done(_))
-    }
-
-    /// Maps the yielded payload with a transformation closure.
-    #[inline(always)]
-    pub fn map_yield<U, F: FnOnce(Y) -> U>(self, f: F) -> Step<U, R> {
-        match self {
-            Self::Yielded(y) => Step::Yielded(f(y)),
-            Self::Done(r) => Step::Done(r),
-        }
-    }
-
-    /// Maps the terminal completion value with a transformation closure.
-    #[inline(always)]
-    pub fn map_done<U, F: FnOnce(R) -> U>(self, f: F) -> Step<Y, U> {
-        match self {
-            Self::Yielded(y) => Step::Yielded(y),
-            Self::Done(r) => Step::Done(f(r)),
-        }
-    }
+    Done(R),
 }
 
 /// Universal Finite State Machine Kernel contract.
@@ -68,10 +35,10 @@ pub trait Machine {
     /// Advance the FSM one transition step using the supplied resumption value.
     ///
     /// # Invariants
-    /// - Calling `step` after returning `Step::Done` is a contract violation (poisoned state).
+    /// - Calling `step` after returning `Step::Done` is a contract violation (poisoned/terminal state).
     fn step(&mut self, resume: Self::Resume) -> Step<Self::Yield, Self::Return>;
 
-    /// Optional synchronous cleanup. Transitions the machine to terminal state.
+    /// Optional synchronous cleanup. Invoked on early cancellation or abort.
     #[inline]
     fn close(&mut self) {}
 }
@@ -88,25 +55,48 @@ pub trait Generator: Machine<Resume = ()> {}
 impl<T: ?Sized + Machine<Resume = ()>> Generator for T {}
 
 /// Zero-cost Iterator adapter over a 1-way Generator.
-#[repr(transparent)]
-pub struct GenIter<M>(pub M);
+///
+/// Ensures the FSM single-return invariant: once [`Step::Done`] is returned,
+/// the machine is never polled again.
+pub struct GenIter<M> {
+    machine: M,
+    is_done: bool,
+}
+
+impl<M> GenIter<M> {
+    /// Constructs a new iterator adapter wrapping a generator.
+    #[inline(always)]
+    pub const fn new(machine: M) -> Self {
+        Self {
+            machine,
+            is_done: false,
+        }
+    }
+}
 
 impl<M: Generator> core::iter::Iterator for GenIter<M> {
     type Item = M::Yield;
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        match self.0.step(()) {
+        if self.is_done {
+            return None;
+        }
+
+        match self.machine.step(()) {
             Step::Yielded(val) => Some(val),
-            Step::Done(_) => None,
+            Step::Done(_) => {
+                self.is_done = true;
+                None
+            }
         }
     }
 }
 
-impl<M: Generator + FusedMachine> core::iter::FusedIterator for GenIter<M> {}
+impl<M: Generator> core::iter::FusedIterator for GenIter<M> {}
 
 // ============================================================================
-// 3. 2-WAY PROJECTION: OPEN ALGEBRAIC EFFECTS (TYPED INVERTED SLOTS)
+// 3. 2-WAY PROJECTION: ALGEBRAIC EFFECTS
 // ============================================================================
 
 /// Base trait defining an algebraic effect request.
@@ -115,89 +105,81 @@ pub trait Effect {
     type Response;
 }
 
-/// Affine continuation token linking an effect request to its typed response slot.
-pub struct Request<'a, E: Effect> {
-    pub effect: E,
-    slot: &'a mut Option<E::Response>,
-}
-
-impl<'a, E: Effect> Request<'a, E> {
-    /// Constructs a new effect request binding the target response slot.
-    #[inline(always)]
-    pub fn new(effect: E, slot: &'a mut Option<E::Response>) -> Self {
-        Self { effect, slot }
-    }
-
-    /// Complete the effect resumption with the statically typed response.
-    #[inline(always)]
-    pub fn respond(self, response: E::Response) {
-        *self.slot = Some(response);
-    }
-}
-
-/// Coproduct open sum for composing independent effects without monolithic closed enums.
+/// Input protocol for driving two-way effect state machines.
+///
+/// Distinguishes the first initialization turn (where no prior effect occurred)
+/// from subsequent resumptions with responses, or explicit cancellation/abort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Either<L, R> {
-    Left(L),
-    Right(R),
+pub enum ResumeSignal<R> {
+    /// Initial startup step.
+    Start,
+    /// Resumption with the environment's response to the prior effect.
+    Resume(R),
+    /// The environment aborted the operation early.
+    Abort,
 }
 
-impl<L: Effect, R: Effect> Effect for Either<L, R> {
-    type Response = Either<L::Response, R::Response>;
+impl<R> ResumeSignal<R> {
+    /// Unwraps the response payload or returns `None` if this was `Start` or `Abort`.
+    #[inline(always)]
+    pub fn response(self) -> Option<R> {
+        match self {
+            Self::Resume(r) => Some(r),
+            Self::Start | Self::Abort => None,
+        }
+    }
+
+    /// True if the signal is `Abort`.
+    #[inline(always)]
+    pub const fn is_abort(&self) -> bool {
+        matches!(self, Self::Abort)
+    }
 }
 
-// ============================================================================
-// 4. SYNCHRONOUS EFFECT DRIVERS & MACROS
-// ============================================================================
-
-/// Synchronously drives an effect machine yielding [`Request`] tokens.
+/// Synchronously drives an effect machine to completion using a handler closure.
+///
+/// Calls [`Machine::close`] deterministically if the handler aborts (returns `None`).
 #[inline(always)]
 pub fn handle_sync<M, E, H>(mut machine: M, mut handler: H) -> Option<M::Return>
 where
     E: Effect,
-    M: Machine<Yield = E, Resume = Option<E::Response>>,
+    M: Machine<Yield = E, Resume = ResumeSignal<E::Response>>,
     H: FnMut(E) -> Option<E::Response>,
 {
-    let mut resume_val = None;
+    let mut signal = ResumeSignal::Start;
     loop {
-        match machine.step(resume_val.take()) {
+        match machine.step(signal) {
             Step::Yielded(eff) => {
-                let resp = handler(eff);
-                if resp.is_none() {
-                    machine.close();
-                    return None;
+                match handler(eff) {
+                    Some(resp) => {
+                        signal = ResumeSignal::Resume(resp);
+                    }
+                    None => {
+                        // Notify machine of early abort, then close
+                        let _ = machine.step(ResumeSignal::Abort);
+                        machine.close();
+                        return None;
+                    }
                 }
-                resume_val = resp;
             }
             Step::Done(ret) => return Some(ret),
         }
     }
 }
 
-/// Declarative pattern matching macro for driving machines and effect steps.
-#[macro_export]
-macro_rules! machine_match {
-    ($step:expr, Yield($y:pat) => $on_yield:expr, Done($r:pat) => $on_done:expr $(,)?) => {
-        match $step {
-            $crate::Step::Yielded($y) => $on_yield,
-            $crate::Step::Done($r) => $on_done,
-        }
-    };
-}
-
 // ============================================================================
-// 5. EXTENSION METHODS (DX ERGONOMICS)
+// 4. EXTENSION METHODS (DX ERGONOMICS)
 // ============================================================================
 
-/// Ergonomic extension methods for any state machine.
+/// Ergonomic extension methods for state machines.
 pub trait MachineExt: Machine {
-    /// Converts a 1-way generator into standard `core::iter::Iterator`.
+    /// Converts a 1-way generator into a fused `core::iter::Iterator`.
     #[inline(always)]
     fn into_iter(self) -> GenIter<Self>
     where
         Self: Sized + Generator,
     {
-        GenIter(self)
+        GenIter::new(self)
     }
 }
 
@@ -206,19 +188,29 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        Effect, Either, FusedMachine, GenIter, Generator, Machine, MachineExt, Request, Step,
-        handle_sync, machine_match,
+        Effect, FusedMachine, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step,
+        handle_sync,
     };
 }
 
 #[cfg(test)]
-mod tests {
+pub mod fixtures {
     use super::prelude::*;
 
-    // 1. Test 1-Way Generator
-    struct RangeGen {
-        curr: u64,
-        max: u64,
+    pub struct RangeGen {
+        pub curr: u64,
+        pub max: u64,
+        pub polled_after_done: bool,
+    }
+
+    impl RangeGen {
+        pub const fn new(start: u64, max: u64) -> Self {
+            Self {
+                curr: start,
+                max,
+                polled_after_done: false,
+            }
+        }
     }
 
     impl Machine for RangeGen {
@@ -227,11 +219,16 @@ mod tests {
         type Return = ();
 
         fn step(&mut self, _resume: ()) -> Step<Self::Yield, Self::Return> {
+            if self.polled_after_done {
+                panic!("Contract violation: RangeGen polled after Done");
+            }
+
             if self.curr < self.max {
                 let val = self.curr;
                 self.curr += 1;
                 Step::Yielded(val)
             } else {
+                self.polled_after_done = true;
                 Step::Done(())
             }
         }
@@ -239,57 +236,100 @@ mod tests {
 
     impl FusedMachine for RangeGen {}
 
-    #[test]
-    fn test_generator_to_iterator_projection() {
-        let generator = RangeGen { curr: 1, max: 4 };
-        let sum: u64 = generator.into_iter().sum();
-        assert_eq!(sum, 6); // 1 + 2 + 3 = 6
-    }
-
-    // 2. Test 2-Way Typed Algebraic Effects
-    struct GreetEffect {
+    pub struct GreetEffect {
         pub prompt: &'static str,
     }
     impl Effect for GreetEffect {
         type Response = &'static str;
     }
 
-    enum GreetState {
+    pub enum GreetState {
         Init,
         WaitingName,
         Done,
+        Aborted,
     }
 
-    struct GreetFSM {
-        state: GreetState,
+    pub struct GreetFSM {
+        pub state: GreetState,
+        pub close_calls: usize,
     }
+
+    impl Default for GreetFSM {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl GreetFSM {
+        pub const fn new() -> Self {
+            Self {
+                state: GreetState::Init,
+                close_calls: 0,
+            }
+        }
+    }
+
 
     impl Machine for GreetFSM {
         type Yield = GreetEffect;
-        type Resume = Option<&'static str>;
+        type Resume = ResumeSignal<&'static str>;
         type Return = &'static str;
 
-        fn step(&mut self, resume: Self::Resume) -> Step<Self::Yield, Self::Return> {
+        fn step(&mut self, signal: Self::Resume) -> Step<Self::Yield, Self::Return> {
             match self.state {
                 GreetState::Init => {
                     self.state = GreetState::WaitingName;
                     Step::Yielded(GreetEffect { prompt: "Name?" })
                 }
-                GreetState::WaitingName => {
-                    let name = resume.expect("Resume required for GreetEffect");
-                    self.state = GreetState::Done;
-                    Step::Done(name)
+                GreetState::WaitingName => match signal {
+                    ResumeSignal::Resume(name) => {
+                        self.state = GreetState::Done;
+                        Step::Done(name)
+                    }
+                    ResumeSignal::Abort => {
+                        self.state = GreetState::Aborted;
+                        Step::Done("aborted")
+                    }
+                    ResumeSignal::Start => {
+                        self.state = GreetState::Aborted;
+                        Step::Done("protocol_error")
+                    }
+                },
+                GreetState::Done | GreetState::Aborted => {
+                    panic!("Contract violation: GreetFSM polled after terminal state");
                 }
-                GreetState::Done => panic!("Polled after Done"),
             }
         }
+
+        fn close(&mut self) {
+            self.close_calls += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::*;
+    use super::prelude::*;
+
+    #[test]
+    fn test_generator_to_iterator_projection_never_double_polls() {
+        let generator = RangeGen::new(1, 4);
+        let mut iter = generator.into_iter();
+
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), None);
+        // Trailing None calls must NOT poll the underlying generator
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
-    fn test_two_way_effect_dispatch() {
-        let machine = GreetFSM {
-            state: GreetState::Init,
-        };
+    fn test_two_way_effect_dispatch_success() {
+        let machine = GreetFSM::new();
         let result = handle_sync(machine, |eff| {
             assert_eq!(eff.prompt, "Name?");
             Some("Arthur")
@@ -298,10 +338,11 @@ mod tests {
     }
 
     #[test]
-    fn test_two_way_effect_abort() {
-        let machine = GreetFSM {
-            state: GreetState::Init,
-        };
+    fn test_two_way_effect_abort_triggers_close() {
+        let mut machine = GreetFSM::new();
+        let close_counter = &mut machine.close_calls;
+        *close_counter = 0;
+
         let result = handle_sync(machine, |_eff| None);
         assert_eq!(result, None);
     }

@@ -16,7 +16,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -32,8 +32,8 @@ jobs:
       - name: Run Clippy (Pedantic Warnings as Errors)
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run Unit & Integration Tests
-        run: cargo test --all-targets
+      - name: Run Unit & Integration Tests (All Features)
+        run: cargo test --all-targets --all-features
 
       - name: Verify #![no_std] Core Build
         run: cargo check --no-default-features -p machine-core
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
