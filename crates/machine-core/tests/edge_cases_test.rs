@@ -227,3 +227,78 @@ fn test_abort_with_explicit_close_calls() {
     machine.close();
     assert_eq!(close_count.load(Ordering::SeqCst), 2);
 }
+
+// ============================================================================
+// 5. OPEN EFFECT SUMS (EITHER) COMPOSITION TESTS
+// ============================================================================
+
+struct ReadEffect(&'static str);
+impl Effect for ReadEffect {
+    type Response = String;
+}
+
+struct WriteEffect(&'static str, usize);
+impl Effect for WriteEffect {
+    type Response = bool;
+}
+
+enum CompositeStepState {
+    Start,
+    Wrote,
+    Done,
+}
+
+struct CompositeMachine {
+    state: CompositeStepState,
+}
+
+impl Machine for CompositeMachine {
+    type Yield = Either<ReadEffect, WriteEffect>;
+    type Resume = ResumeSignal<Either<String, bool>>;
+    type Return = usize;
+
+    fn step(&mut self, signal: Self::Resume) -> Step<Self::Yield, Self::Return> {
+        match self.state {
+            CompositeStepState::Start => {
+                self.state = CompositeStepState::Wrote;
+                Step::Yielded(Either::Left(ReadEffect("config.toml")))
+            }
+            CompositeStepState::Wrote => match signal {
+                ResumeSignal::Resume(Either::Left(data)) => {
+                    self.state = CompositeStepState::Done;
+                    Step::Yielded(Either::Right(WriteEffect("cache.bin", data.len())))
+                }
+                _ => Step::Done(0),
+            },
+            CompositeStepState::Done => match signal {
+                ResumeSignal::Resume(Either::Right(success)) => {
+                    Step::Done(if success { 42 } else { 0 })
+                }
+                _ => Step::Done(0),
+            },
+        }
+    }
+}
+
+#[test]
+fn test_either_coproduct_dispatch_with_combined_handlers() {
+    let machine = CompositeMachine {
+        state: CompositeStepState::Start,
+    };
+
+    let read_handler = |eff: ReadEffect| -> Option<String> {
+        assert_eq!(eff.0, "config.toml");
+        Some("data_payload".to_string())
+    };
+
+    let write_handler = |eff: WriteEffect| -> Option<bool> {
+        assert_eq!(eff.0, "cache.bin");
+        assert_eq!(eff.1, 12);
+        Some(true)
+    };
+
+    let combined = combine_handlers(read_handler, write_handler);
+    let result = handle_sync(machine, combined);
+
+    assert_eq!(result, Some(42));
+}

@@ -7,20 +7,22 @@
 
 // Explicit re-exports rather than wildcard glob
 pub use machine_core::{
-    Effect, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
+    Effect, Either, GenIter, Generator, IntoLeft, IntoRight, Machine, MachineExt, ResumeSignal,
+    Step, combine_handlers, handle_sync, match_effect,
 };
 
 #[cfg(feature = "async")]
-pub use machine_async::{AsyncEffectHandler, DriveDirectFuture, handle_async, handle_async_direct};
+pub use machine_async::{
+    AsyncEffectHandler, DriveDirectFuture, DriveFuture, GenStream, MachineAsyncExt, handle_async,
+    handle_async_direct,
+};
 
 /// Common prelude for `machine-rs`.
 pub mod prelude {
     pub use machine_core::prelude::*;
 
     #[cfg(feature = "async")]
-    pub use machine_async::{
-        AsyncEffectHandler, DriveDirectFuture, handle_async, handle_async_direct,
-    };
+    pub use machine_async::prelude::*;
 }
 
 #[cfg(test)]

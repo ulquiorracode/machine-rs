@@ -151,8 +151,108 @@ where
 }
 
 // ============================================================================
-// 4. EXTENSION METHODS (DX ERGONOMICS)
+// 4. OPEN EFFECT SUMS & COPRODUCTS (ROW POLYMORPHISM)
 // ============================================================================
+
+/// Represents a binary coproduct (open sum) of two effects or responses.
+///
+/// Enables composition of independent effect domain models without requiring
+/// a monolithic manual application enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Either<A, B> {
+    /// Left variant.
+    Left(A),
+    /// Right variant.
+    Right(B),
+}
+
+impl<A, B> Either<A, B> {
+    /// Returns `true` if this is the `Left` variant.
+    #[inline(always)]
+    pub const fn is_left(&self) -> bool {
+        matches!(self, Self::Left(_))
+    }
+
+    /// Returns `true` if this is the `Right` variant.
+    #[inline(always)]
+    pub const fn is_right(&self) -> bool {
+        matches!(self, Self::Right(_))
+    }
+
+    /// Converts into `Option<A>` if this is `Left`.
+    #[inline(always)]
+    pub fn left(self) -> Option<A> {
+        match self {
+            Self::Left(a) => Some(a),
+            Self::Right(_) => None,
+        }
+    }
+
+    /// Converts into `Option<B>` if this is `Right`.
+    #[inline(always)]
+    pub fn right(self) -> Option<B> {
+        match self {
+            Self::Left(_) => None,
+            Self::Right(b) => Some(b),
+        }
+    }
+}
+
+impl<A: Effect, B: Effect> Effect for Either<A, B> {
+    type Response = Either<A::Response, B::Response>;
+}
+
+/// Helper trait for wrapping a left effect in a binary coproduct.
+pub trait IntoLeft<B>: Sized {
+    /// Injects `self` into the `Left` branch of [`Either`].
+    #[inline(always)]
+    fn left(self) -> Either<Self, B> {
+        Either::Left(self)
+    }
+}
+
+impl<A, B> IntoLeft<B> for A {}
+
+/// Helper trait for wrapping a right effect in a binary coproduct.
+pub trait IntoRight<A>: Sized {
+    /// Injects `self` into the `Right` branch of [`Either`].
+    #[inline(always)]
+    fn right(self) -> Either<A, Self> {
+        Either::Right(self)
+    }
+}
+
+impl<A, B> IntoRight<A> for B {}
+
+/// Combinator combining two synchronous effect handlers into a single branched handler.
+#[inline(always)]
+#[allow(clippy::type_complexity)]
+pub fn combine_handlers<E1, E2, H1, H2>(
+    mut h1: H1,
+    mut h2: H2,
+) -> impl FnMut(Either<E1, E2>) -> Option<Either<E1::Response, E2::Response>>
+where
+    E1: Effect,
+    E2: Effect,
+    H1: FnMut(E1) -> Option<E1::Response>,
+    H2: FnMut(E2) -> Option<E2::Response>,
+{
+    move |eff| match eff {
+        Either::Left(e1) => h1(e1).map(Either::Left),
+        Either::Right(e2) => h2(e2).map(Either::Right),
+    }
+}
+
+/// Declarative macro for matching and dispatching open effect sums.
+#[macro_export]
+macro_rules! match_effect {
+    ($val:expr, Left($bind_l:ident) => $arm_l:expr, Right($bind_r:ident) => $arm_r:expr $(,)?) => {
+        match $val {
+            $crate::Either::Left($bind_l) => $arm_l,
+            $crate::Either::Right($bind_r) => $arm_r,
+        }
+    };
+}
 
 /// Ergonomic extension methods for state machines.
 pub trait MachineExt: Machine {
@@ -171,7 +271,8 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        Effect, GenIter, Generator, Machine, MachineExt, ResumeSignal, Step, handle_sync,
+        Effect, Either, GenIter, Generator, IntoLeft, IntoRight, Machine, MachineExt, ResumeSignal,
+        Step, combine_handlers, handle_sync, match_effect,
     };
 }
 
