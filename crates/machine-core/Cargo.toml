@@ -1,0 +1,18 @@
+[package]
+name = "machine-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Universal, zero-cost, #![no_std] state machine kernel unifying 1-way Generators and 2-way Algebraic Effects"
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]

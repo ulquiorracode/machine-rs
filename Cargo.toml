@@ -1,25 +1,32 @@
-[package]
-name = "template-systems-rs"
+[workspace]
+members = [
+    "crates/machine-core",
+    "crates/machine-async",
+    "crates/machine-rs",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85.0"
 authors = ["UlquiorraCode Contributors"]
 license = "MIT OR Apache-2.0"
-description = "Battle-tested systems-grade template for high-performance Rust services, engines, and libraries"
-readme = "README.md"
-repository = "https://github.com/ulquiorracode/template-systems-rs"
+repository = "https://github.com/ulquiorracode/machine-rs"
+keywords = ["state-machine", "fsm", "generators", "effects", "zero-cost"]
+categories = ["rust-patterns", "asynchronous", "no-std"]
 
-[dependencies]
+[workspace.dependencies]
+machine-core = { path = "crates/machine-core", version = "0.1.0" }
+machine-async = { path = "crates/machine-async", version = "0.1.0" }
+machine-rs = { path = "crates/machine-rs", version = "0.1.0" }
 
-[dev-dependencies]
 criterion = "0.5"
-
-[[bench]]
-name = "baseline_bench"
-harness = false
+tokio = { version = "1.43", default-features = false, features = ["macros", "rt", "sync"] }
 
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true

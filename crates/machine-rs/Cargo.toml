@@ -1,0 +1,38 @@
+[package]
+name = "machine-rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Universal State Machine Kernel for Rust: Unifying Generators, Iterators, and Algebraic Effects"
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[features]
+default = ["std"]
+std = ["machine-core/std"]
+async = ["dep:machine-async"]
+
+[dependencies]
+machine-core = { workspace = true }
+machine-async = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["async_tokio"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+[[bench]]
+name = "generator_bench"
+harness = false
+
+[[bench]]
+name = "sync_effect_vs_dyn_bench"
+harness = false
+
+[[bench]]
+name = "effect_vs_future_bench"
+harness = false
+required-features = ["async"]
