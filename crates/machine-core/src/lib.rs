@@ -101,6 +101,57 @@ pub trait Effect {
     type Response;
 }
 
+// ============================================================================
+// CORE SYSTEM EFFECT PRIMITIVES
+// ============================================================================
+
+/// Cooperative scheduling yield effect. Requests the runtime to yield control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct YieldNow;
+
+impl Effect for YieldNow {
+    type Response = ();
+}
+
+/// Timer or sleep effect requesting the runtime to pause execution for a duration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Sleep {
+    /// Desired sleep duration in milliseconds.
+    pub millis: u64,
+}
+
+impl Sleep {
+    /// Constructs a sleep effect with the specified duration in milliseconds.
+    #[inline(always)]
+    pub const fn from_millis(millis: u64) -> Self {
+        Self { millis }
+    }
+}
+
+impl Effect for Sleep {
+    type Response = ();
+}
+
+/// Explicit abort effect signaling terminal cancellation with a reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AbortEffect {
+    /// Human-readable reason for the abort.
+    pub reason: &'static str,
+}
+
+impl AbortEffect {
+    /// Constructs an abort effect with the given reason.
+    #[inline(always)]
+    pub const fn new(reason: &'static str) -> Self {
+        Self { reason }
+    }
+}
+
+impl Effect for AbortEffect {
+    /// Abort is terminal; its response is mathematically uninhabited.
+    type Response = core::convert::Infallible;
+}
+
 /// Input protocol for driving two-way effect state machines.
 ///
 /// Distinguishes the first initialization turn (where no prior effect occurred)
@@ -390,9 +441,9 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        Coproduct, CoproductInject, Effect, Either, GenIter, Generator, HandlerExt, InjectExt,
-        IntoLeft, IntoRight, Machine, MachineExt, Nil, ResumeSignal, Step, combine_handlers,
-        handle_sync, match_coproduct, match_effect,
+        AbortEffect, Coproduct, CoproductInject, Effect, Either, GenIter, Generator, HandlerExt,
+        InjectExt, IntoLeft, IntoRight, Machine, MachineExt, Nil, ResumeSignal, Sleep, Step,
+        YieldNow, combine_handlers, handle_sync, match_coproduct, match_effect,
     };
 }
 
