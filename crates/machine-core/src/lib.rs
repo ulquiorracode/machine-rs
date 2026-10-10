@@ -224,6 +224,61 @@ pub trait IntoRight<A>: Sized {
 
 impl<A, B> IntoRight<A> for B {}
 
+/// Empty terminal type for coproduct trees (analogous to `void` or empty sum).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Nil {}
+
+impl Effect for Nil {
+    type Response = Nil;
+}
+
+// Marker types for type-level Peano indexing into nested Either coproducts
+#[doc(hidden)]
+pub struct Here;
+#[doc(hidden)]
+pub struct There<Next>(core::marker::PhantomData<Next>);
+
+/// Trait for automatically injecting a variant into an arbitrary-depth [`Either`] coproduct.
+///
+/// Discovered at compile-time via type-level Peano indexing without runtime overhead.
+pub trait CoproductInject<Target, Index> {
+    /// Injects `self` into the target coproduct at compile-time.
+    fn inject(self) -> Target;
+}
+
+// Base case 1: item is the Left variant of Either<Self, R>
+impl<L, R> CoproductInject<Either<L, R>, Here> for L {
+    #[inline(always)]
+    fn inject(self) -> Either<L, R> {
+        Either::Left(self)
+    }
+}
+
+// Inductive step: item is inside the Right branch of Either<L, R>
+impl<L, R, T, Next> CoproductInject<Either<L, R>, There<Next>> for T
+where
+    T: CoproductInject<R, Next>,
+{
+    #[inline(always)]
+    fn inject(self) -> Either<L, R> {
+        Either::Right(self.inject())
+    }
+}
+
+/// Extension trait enabling ergonomic `.inject()` calls on any injectible effect.
+pub trait InjectExt: Sized {
+    /// Injects `self` into the target coproduct type `Target`.
+    #[inline(always)]
+    fn inject_coproduct<Target, Index>(self) -> Target
+    where
+        Self: CoproductInject<Target, Index>,
+    {
+        CoproductInject::inject(self)
+    }
+}
+
+impl<T: Sized> InjectExt for T {}
+
 /// Combinator combining two synchronous effect handlers into a single branched handler.
 #[inline(always)]
 #[allow(clippy::type_complexity)]
@@ -243,6 +298,25 @@ where
     }
 }
 
+/// Fluent extension trait for composing synchronous effect handlers.
+pub trait HandlerExt<E: Effect>: Sized {
+    /// Chains this handler with another handler, producing a composite handler over [`Either`].
+    #[inline(always)]
+    #[allow(clippy::type_complexity)]
+    fn or_else<E2: Effect, H2>(
+        self,
+        other: H2,
+    ) -> impl FnMut(Either<E, E2>) -> Option<Either<E::Response, E2::Response>>
+    where
+        Self: FnMut(E) -> Option<E::Response>,
+        H2: FnMut(E2) -> Option<E2::Response>,
+    {
+        combine_handlers(self, other)
+    }
+}
+
+impl<E: Effect, F: FnMut(E) -> Option<E::Response>> HandlerExt<E> for F {}
+
 /// Declarative macro for matching and dispatching open effect sums.
 #[macro_export]
 macro_rules! match_effect {
@@ -250,6 +324,25 @@ macro_rules! match_effect {
         match $val {
             $crate::Either::Left($bind_l) => $arm_l,
             $crate::Either::Right($bind_r) => $arm_r,
+        }
+    };
+}
+
+/// Declarative macro for flat pattern matching across arbitrarily nested [`Either`] coproducts.
+#[macro_export]
+macro_rules! match_coproduct {
+    // Base case: single arm remaining for Nil-terminated tree: match Either::Left($arm)
+    ($val:expr, $arm:pat => $body:expr $(,)?) => {
+        match $val {
+            $crate::Either::Left($arm) => $body,
+            $crate::Either::Right(_) => unreachable!(),
+        }
+    };
+    // Recursive decomposition: Left matches first pattern, Right recurses on remaining arms
+    ($val:expr, $first_pat:pat => $first_body:expr, $($tail_pat:pat => $tail_body:expr),+ $(,)?) => {
+        match $val {
+            $crate::Either::Left($first_pat) => $first_body,
+            $crate::Either::Right(rest) => $crate::match_coproduct!(rest, $($tail_pat => $tail_body),+),
         }
     };
 }
@@ -271,8 +364,9 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        Effect, Either, GenIter, Generator, IntoLeft, IntoRight, Machine, MachineExt, ResumeSignal,
-        Step, combine_handlers, handle_sync, match_effect,
+        CoproductInject, Effect, Either, GenIter, Generator, HandlerExt, InjectExt, IntoLeft,
+        IntoRight, Machine, MachineExt, Nil, ResumeSignal, Step, combine_handlers, handle_sync,
+        match_coproduct, match_effect,
     };
 }
 
