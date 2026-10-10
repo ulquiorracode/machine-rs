@@ -232,6 +232,32 @@ impl Effect for Nil {
     type Response = Nil;
 }
 
+/// Type macro for declaring flat, clean coproduct signatures without nested `Either` brackets.
+///
+/// # Example
+/// ```rust
+/// use machine_core::prelude::*;
+///
+/// struct E1; impl Effect for E1 { type Response = (); }
+/// struct E2; impl Effect for E2 { type Response = (); }
+/// struct E3; impl Effect for E3 { type Response = (); }
+///
+/// // Expands to: Either<E1, Either<E2, Either<E3, Nil>>>
+/// type MyEffects = Coproduct!(E1, E2, E3);
+/// ```
+#[macro_export]
+macro_rules! Coproduct {
+    () => {
+        $crate::Nil
+    };
+    ($head:ty $(,)?) => {
+        $crate::Either<$head, $crate::Nil>
+    };
+    ($head:ty, $($tail:ty),+ $(,)?) => {
+        $crate::Either<$head, $crate::Coproduct!($($tail),+)>
+    };
+}
+
 // Marker types for type-level Peano indexing into nested Either coproducts
 #[doc(hidden)]
 pub struct Here;
@@ -364,9 +390,9 @@ impl<M: ?Sized + Machine> MachineExt for M {}
 /// Common prelude for `machine-core`.
 pub mod prelude {
     pub use crate::{
-        CoproductInject, Effect, Either, GenIter, Generator, HandlerExt, InjectExt, IntoLeft,
-        IntoRight, Machine, MachineExt, Nil, ResumeSignal, Step, combine_handlers, handle_sync,
-        match_coproduct, match_effect,
+        Coproduct, CoproductInject, Effect, Either, GenIter, Generator, HandlerExt, InjectExt,
+        IntoLeft, IntoRight, Machine, MachineExt, Nil, ResumeSignal, Step, combine_handlers,
+        handle_sync, match_coproduct, match_effect,
     };
 }
 

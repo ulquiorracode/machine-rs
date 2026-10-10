@@ -320,7 +320,8 @@ impl Effect for AlertEffect {
     type Response = bool;
 }
 
-type ThreeWayCoproduct = Either<LogEffect, Either<MetricEffect, Either<AlertEffect, Nil>>>;
+// Declared flatly using Coproduct! macro without nested Either brackets
+type ThreeWayCoproduct = Coproduct!(LogEffect, MetricEffect, AlertEffect);
 
 #[test]
 fn test_peano_coproduct_inject_without_nested_brackets() {
@@ -341,14 +342,121 @@ fn test_peano_coproduct_inject_without_nested_brackets() {
 }
 
 #[test]
-fn test_flat_match_coproduct_macro() {
-    let eff: ThreeWayCoproduct = MetricEffect("fps", 144.0).inject();
-
-    let matched_kind = match_coproduct!(eff,
+fn test_flat_match_coproduct_macro_all_branches() {
+    // Branch 1 (first level)
+    let eff1: ThreeWayCoproduct = LogEffect("hello").inject();
+    let m1 = match_coproduct!(eff1,
         LogEffect(msg) => format!("log: {}", msg),
         MetricEffect(key, val) => format!("metric: {}={}", key, val),
         AlertEffect(alert) => format!("alert: {}", alert),
     );
+    assert_eq!(m1, "log: hello");
 
-    assert_eq!(matched_kind, "metric: fps=144");
+    // Branch 2 (middle level)
+    let eff2: ThreeWayCoproduct = MetricEffect("fps", 144.0).inject();
+    let m2 = match_coproduct!(eff2,
+        LogEffect(msg) => format!("log: {}", msg),
+        MetricEffect(key, val) => format!("metric: {}={}", key, val),
+        AlertEffect(alert) => format!("alert: {}", alert),
+    );
+    assert_eq!(m2, "metric: fps=144");
+
+    // Branch 3 (terminal level)
+    let eff3: ThreeWayCoproduct = AlertEffect("overheating").inject();
+    let m3 = match_coproduct!(eff3,
+        LogEffect(msg) => format!("log: {}", msg),
+        MetricEffect(key, val) => format!("metric: {}={}", key, val),
+        AlertEffect(alert) => format!("alert: {}", alert),
+    );
+    assert_eq!(m3, "alert: overheating");
+}
+
+// ============================================================================
+// 6. END-TO-END 3-WAY COPRODUCT DRIVER PIPELINE TEST
+// ============================================================================
+
+enum E2eFsmState {
+    Init,
+    Logged,
+    Recorded,
+    Done,
+}
+
+struct E2ePipelineFsm {
+    state: E2eFsmState,
+}
+
+impl Machine for E2ePipelineFsm {
+    type Yield = ThreeWayCoproduct;
+    type Resume = ResumeSignal<Coproduct!((), (), bool)>;
+    type Return = &'static str;
+
+    fn step(&mut self, signal: Self::Resume) -> Step<Self::Yield, Self::Return> {
+        match self.state {
+            E2eFsmState::Init => {
+                self.state = E2eFsmState::Logged;
+                // Seamlessly inject level 1 effect
+                Step::Yielded(LogEffect("session_started").inject())
+            }
+            E2eFsmState::Logged => {
+                self.state = E2eFsmState::Recorded;
+                // Seamlessly inject level 2 effect
+                Step::Yielded(MetricEffect("bandwidth_mbps", 1000.0).inject())
+            }
+            E2eFsmState::Recorded => {
+                self.state = E2eFsmState::Done;
+                // Seamlessly inject level 3 effect
+                Step::Yielded(AlertEffect("disk_warning").inject())
+            }
+            E2eFsmState::Done => match signal {
+                ResumeSignal::Resume(resp) => {
+                    let is_active = match_coproduct!(resp,
+                        _log => false,
+                        _metric => false,
+                        alert_ok => alert_ok,
+                    );
+                    Step::Done(if is_active { "ok" } else { "suppressed" })
+                }
+                _ => Step::Done("aborted"),
+            },
+        }
+    }
+}
+
+#[test]
+fn test_end_to_end_3way_coproduct_yield_inject_drive_match() {
+    let machine = E2ePipelineFsm {
+        state: E2eFsmState::Init,
+    };
+
+    let mut log_log = Vec::new();
+    let mut metric_log = Vec::new();
+    let mut alert_log = Vec::new();
+
+    let log_handler = |eff: LogEffect| -> Option<()> {
+        log_log.push(eff.0);
+        Some(())
+    };
+
+    let metric_handler = |eff: MetricEffect| -> Option<()> {
+        metric_log.push((eff.0, eff.1));
+        Some(())
+    };
+
+    let alert_handler = |eff: AlertEffect| -> Option<bool> {
+        alert_log.push(eff.0);
+        Some(true)
+    };
+
+    let nil_handler = |_nil: Nil| -> Option<Nil> { None };
+
+    // Right-associative composition matches Coproduct!(E1, E2, E3): Either<E1, Either<E2, Either<E3, Nil>>>
+    let combined = log_handler.or_else(metric_handler.or_else(alert_handler.or_else(nil_handler)));
+
+    let result = handle_sync(machine, combined);
+
+    assert_eq!(result, Some("ok"));
+    assert_eq!(log_log, vec!["session_started"]);
+    assert_eq!(metric_log, vec![("bandwidth_mbps", 1000.0)]);
+    assert_eq!(alert_log, vec!["disk_warning"]);
 }
