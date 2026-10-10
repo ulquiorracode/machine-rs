@@ -2,7 +2,7 @@
 members = [
     "crates/machine-core",
     "crates/machine-async",
-    "crates/machine-rs",
+    "crates/machine",
 ]
 resolver = "2"
 
@@ -19,7 +19,7 @@ categories = ["rust-patterns", "asynchronous", "no-std"]
 [workspace.dependencies]
 machine-core = { path = "crates/machine-core", version = "0.1.0" }
 machine-async = { path = "crates/machine-async", version = "0.1.0" }
-machine-rs = { path = "crates/machine-rs", version = "0.1.0" }
+machine-rs = { path = "crates/machine", version = "0.1.0" }
 
 criterion = "0.5"
 futures-core = { version = "0.3", default-features = false }
