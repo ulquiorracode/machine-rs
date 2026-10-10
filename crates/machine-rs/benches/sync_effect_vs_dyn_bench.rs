@@ -90,18 +90,6 @@ impl StorageService for FastInMemoryStorage {
     }
 }
 
-#[inline(never)]
-fn run_dyn_box_transaction(storage: &mut Box<dyn StorageService>, key: u64, delta: u64) -> u64 {
-    let curr = storage.read(key);
-    storage.write(key, curr + delta)
-}
-
-#[inline(never)]
-fn run_dyn_ref_transaction(storage: &mut dyn StorageService, key: u64, delta: u64) -> u64 {
-    let curr = storage.read(key);
-    storage.write(key, curr + delta)
-}
-
 // ============================================================================
 // BENCHMARK SUITE
 // ============================================================================
@@ -122,7 +110,7 @@ fn bench_sync_effect_vs_dyn(c: &mut Criterion) {
                         StorageEffect::Read(k) => Some(k * 2),
                         StorageEffect::Write(k, v) => Some(k + v),
                     });
-                    total = total.wrapping_add(res.unwrap_or(0));
+                    total = total.wrapping_add(black_box(res.unwrap_or(0)));
                 }
                 black_box(total)
             });
@@ -135,8 +123,9 @@ fn bench_sync_effect_vs_dyn(c: &mut Criterion) {
         b.iter(|| {
             let mut total = 0u64;
             for i in 0..iters {
-                let res = run_dyn_ref_transaction(storage_ref, black_box(i), black_box(10));
-                total = total.wrapping_add(res);
+                let curr = storage_ref.read(black_box(i));
+                let res = storage_ref.write(black_box(i), curr + black_box(10));
+                total = total.wrapping_add(black_box(res));
             }
             black_box(total)
         });
@@ -147,8 +136,9 @@ fn bench_sync_effect_vs_dyn(c: &mut Criterion) {
         b.iter(|| {
             let mut total = 0u64;
             for i in 0..iters {
-                let res = run_dyn_box_transaction(&mut storage, black_box(i), black_box(10));
-                total = total.wrapping_add(res);
+                let curr = storage.read(black_box(i));
+                let res = storage.write(black_box(i), curr + black_box(10));
+                total = total.wrapping_add(black_box(res));
             }
             black_box(total)
         });

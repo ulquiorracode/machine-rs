@@ -74,7 +74,7 @@ In `machine-rs`, drivers (`handle_sync`, `handle_async`) are **strictly monomorp
 
 - `step()` and effect handlers inline directly at call sites.
 - Branching is converted by LLVM into direct unconditional or predictable conditional jumps.
-- Yields a **5.34x speedup** over `&mut dyn Trait` (see [BENCHMARKS.md](BENCHMARKS.md)).
+- Yields a **3.33x speedup** over `&mut dyn Trait` (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ### 3. Memory Footprint vs Compiler-Generated Futures
 

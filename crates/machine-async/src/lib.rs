@@ -1,41 +1,137 @@
 //! Asynchronous drivers for `machine-rs`.
 
 use core::future::Future;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use machine_core::{Effect, Machine, ResumeSignal, Step};
 
-/// Asynchronous effect driver executing an effectful [`Machine`] to completion.
+/// Internal execution state of the zero-cost [`DriveFuture`].
+enum DriverState<R, Fut> {
+    /// Ready to perform the next FSM transition step.
+    Step(ResumeSignal<R>),
+    /// Waiting on an asynchronous effect resolution future.
+    Waiting(Fut),
+    /// Terminal completion state.
+    Terminated,
+}
+
+/// A zero-cost, stackless [`Future`] driving an effectful [`Machine`] to completion.
 ///
-/// Drives the machine on an async runtime by evaluating effect handler futures.
-/// If the handler returns `None`, the machine is signaled with [`ResumeSignal::Abort`],
-/// and [`Machine::close`] is invoked deterministically.
-pub async fn handle_async<M, E, H, Fut>(mut machine: M, mut handler: H) -> Option<M::Return>
-where
-    E: Effect + Send,
-    E::Response: Send,
-    M: Machine<Yield = E, Resume = ResumeSignal<E::Response>> + Send,
-    H: FnMut(E) -> Fut + Send,
-    Fut: Future<Output = Option<E::Response>> + Send,
-{
-    let mut signal = ResumeSignal::Start;
-    loop {
-        match machine.step(signal) {
-            Step::Yielded(eff) => match handler(eff).await {
-                Some(resp) => {
-                    signal = ResumeSignal::Resume(resp);
-                }
-                None => {
-                    let abort_step = machine.step(ResumeSignal::Abort);
-                    debug_assert!(
-                        matches!(abort_step, Step::Done(_)),
-                        "machine yielded effect on abort signal rather than terminating"
-                    );
-                    machine.close();
-                    return None;
-                }
-            },
-            Step::Done(ret) => return Some(ret),
+/// Implemented entirely without compiler-generated `async fn` state machines:
+/// - Connects [`Machine::step`] directly to executor polling via manual [`Future::poll`].
+/// - Features an **inline fast-path**: immediately ready effects loop synchronously
+///   without relinquishing execution to the task waker or runtime executor.
+pub struct DriveFuture<M, H, R, Fut> {
+    machine: M,
+    handler: H,
+    state: DriverState<R, Fut>,
+}
+
+impl<M, H, R, Fut> DriveFuture<M, H, R, Fut> {
+    /// Constructs a new asynchronous driver future.
+    #[inline(always)]
+    pub const fn new(machine: M, handler: H) -> Self {
+        Self {
+            machine,
+            handler,
+            state: DriverState::Step(ResumeSignal::Start),
         }
     }
+}
+
+impl<M, E, H, Fut> Future for DriveFuture<M, H, E::Response, Fut>
+where
+    E: Effect,
+    M: Machine<Yield = E, Resume = ResumeSignal<E::Response>>,
+    H: FnMut(E) -> Fut,
+    Fut: Future<Output = Option<E::Response>>,
+{
+    type Output = Option<M::Return>;
+
+    #[inline]
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: We never move `machine` or `handler` out of this pinned structure.
+        // The nested `fut` inside `DriverState::Waiting` is pinned in-place.
+        let this = unsafe { self.get_unchecked_mut() };
+
+        loop {
+            match core::mem::replace(&mut this.state, DriverState::Terminated) {
+                DriverState::Step(sig) => match this.machine.step(sig) {
+                    Step::Yielded(eff) => {
+                        let mut fut = (this.handler)(eff);
+                        // Fast-path: immediately poll before suspending to executor
+                        // SAFETY: `fut` is pinned to the local stack frame for this immediate check
+                        let mut pinned = unsafe { Pin::new_unchecked(&mut fut) };
+                        match pinned.as_mut().poll(cx) {
+                            Poll::Ready(Some(resp)) => {
+                                this.state = DriverState::Step(ResumeSignal::Resume(resp));
+                                continue;
+                            }
+                            Poll::Ready(None) => {
+                                let abort_step = this.machine.step(ResumeSignal::Abort);
+                                debug_assert!(
+                                    matches!(abort_step, Step::Done(_)),
+                                    "machine yielded effect on abort signal rather than terminating"
+                                );
+                                this.machine.close();
+                                this.state = DriverState::Terminated;
+                                return Poll::Ready(None);
+                            }
+                            Poll::Pending => {
+                                this.state = DriverState::Waiting(fut);
+                                return Poll::Pending;
+                            }
+                        }
+                    }
+                    Step::Done(ret) => {
+                        this.state = DriverState::Terminated;
+                        return Poll::Ready(Some(ret));
+                    }
+                },
+                DriverState::Waiting(mut fut) => {
+                    // SAFETY: `fut` is pinned to the local stack frame during polling
+                    let mut pinned = unsafe { Pin::new_unchecked(&mut fut) };
+                    match pinned.as_mut().poll(cx) {
+                        Poll::Ready(Some(resp)) => {
+                            this.state = DriverState::Step(ResumeSignal::Resume(resp));
+                            continue;
+                        }
+                        Poll::Ready(None) => {
+                            let abort_step = this.machine.step(ResumeSignal::Abort);
+                            debug_assert!(
+                                matches!(abort_step, Step::Done(_)),
+                                "machine yielded effect on abort signal rather than terminating"
+                            );
+                            this.machine.close();
+                            this.state = DriverState::Terminated;
+                            return Poll::Ready(None);
+                        }
+                        Poll::Pending => {
+                            this.state = DriverState::Waiting(fut);
+                            return Poll::Pending;
+                        }
+                    }
+                }
+                DriverState::Terminated => {
+                    panic!("Contract violation: DriveFuture polled after completion");
+                }
+            }
+        }
+    }
+}
+
+/// Constructs a zero-cost [`DriveFuture`] driving an effect machine to completion.
+///
+/// Evaluates pure domain state machines on async runtimes with zero function coloring.
+#[inline(always)]
+pub fn handle_async<M, E, H, Fut>(machine: M, handler: H) -> DriveFuture<M, H, E::Response, Fut>
+where
+    E: Effect,
+    M: Machine<Yield = E, Resume = ResumeSignal<E::Response>>,
+    H: FnMut(E) -> Fut,
+    Fut: Future<Output = Option<E::Response>>,
+{
+    DriveFuture::new(machine, handler)
 }
 
 #[cfg(test)]

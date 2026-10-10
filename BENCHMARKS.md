@@ -1,17 +1,18 @@
 # Benchmark Suite & Empirical Performance Analysis (`machine-rs`)
 
-This document presents rigorous, empirical benchmarks for `machine-rs`, demonstrating zero-cost compilation, memory footprint savings, and throughput comparisons against native Rust primitives (`core::iter::Iterator`, `std::future::Future`, `Box<dyn Trait>`).
+This document presents rigorous, reproducible benchmarks for `machine-rs`, demonstrating zero-cost compilation, memory footprint savings, and throughput comparisons against native Rust primitives (`core::iter::Iterator`, `std::future::Future`, `Box<dyn Trait>`, `&mut dyn Trait`).
 
 ---
 
 ## 1. Test Harness & Environment Specifications
 
-All benchmarks are measured using [Criterion.rs](https://github.com/bheisler/criterion.rs) with statistical outlier detection, compiler black-box fences (`std::hint::black_box`), and verified release optimization flags (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`).
+All benchmarks are measured using [Criterion.rs](https://github.com/bheisler/criterion.rs) with statistical outlier detection, per-iteration compiler fences (`std::hint::black_box`), and verified release optimization flags (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`).
 
 - **OS**: Windows 11 Enterprise (x86_64)
 - **Rust Toolchain**: Stable Rust 2024 (`rustc 1.85+`)
 - **Compilation Flags**: `RUSTFLAGS="-C target-cpu=native"`
 - **Allocation Verification**: Custom `TrackingAllocator` measuring net allocations (`alloc - dealloc`) over 100,000 continuous steps.
+- **Benchmark Run Timestamp**: 2026-10-10
 
 ---
 
@@ -21,38 +22,50 @@ All benchmarks are measured using [Criterion.rs](https://github.com/bheisler/cri
 
 Prove that projecting a 1-Way Finite State Machine (`Machine<Resume = ()>`) into an `Iterator` via [`GenIter`] incurs **zero instruction and zero clock cycle overhead** compared to hand-written native Rust iterators.
 
-### Benchmark Target
+### Methodology
 
-Accumulating $10\,000$ values in a tight loop (`black_box(sum)`).
+To prevent LLVM from scalar-replacing the accumulation loop into Gauss's closed-form arithmetic progression $n(n - 1) / 2$ in $O(1)$ time, every single iteration is explicitly fenced using `black_box(val)`:
 
-| Implementation | Median Latency | Per-Step Latency | Net Allocations | Assembly Equivalence |
+```rust
+let mut sum = 0u64;
+for val in generator.into_iter() {
+    sum = sum.wrapping_add(black_box(val));
+}
+black_box(sum)
+```
+
+### Empirical Results (1,000 iterations per sample)
+
+| Implementation | Batch Latency (1k ops) | Per-Step Latency | Net Allocations | Relative Overhead |
 | :--- | :---: | :---: | :---: | :---: |
-| **`machine-rs` (`GenIter<CounterGen>`)** | **754.23 ps** | **~0.075 ps** | **0 bytes** | **Identical (100%)** |
-| **Native Rust `Iterator` (`NativeCounter`)** | **752.24 ps** | **~0.075 ps** | **0 bytes** | **Identical (100%)** |
+| **`machine-rs` (`GenIter<CounterGen>`)** | **256.64 ns** | **0.256 ns** (~1.1 CPU cycles) | **0 bytes** | **Baseline (0.0%)** |
+| **Native Rust `Iterator` (`NativeCounter`)** | **256.90 ns** | **0.256 ns** (~1.1 CPU cycles) | **0 bytes** | **+0.1% (Parity)** |
 
 > [!NOTE]
-> The sub-2-picosecond variance is within hardware thermal and clock-jitter margin. LLVM completely eliminates the Zero-Sized Type `Resume = ()`, optimizing the state machine into an identical 3-instruction loop head (`inc`, `cmp`, `jne`).
+> When loops are prevented from being folded into algebraic formulas, both implementations execute in **256.6 ns** across 1,000 steps. The Zero-Sized Type `Resume = ()` is fully eliminated by LLVM, yielding bit-for-bit performance parity with hand-coded iterators.
 
 ---
 
-## 3. Benchmark 2: 2-Way Sync Effects vs Traditional `dyn Trait` Polymorphism
+## 3. Benchmark 2: 2-Way Sync Effects vs `dyn Trait` Polymorphism
 
 ### Objective
 
-Evaluate the performance gain of monomorphic 2-way algebraic effects driven by [`handle_sync`] over classic OOP-style trait-object dynamic dispatch (`Box<dyn Service>` and `&mut dyn Service`).
+Evaluate the performance gain of monomorphic 2-way algebraic effects driven by [`handle_sync`] over classic dynamic dispatch (`&mut dyn Service` and `Box<dyn Service>`).
 
-### Benchmark Target
+### Methodology
 
-Executing a 2-step storage transaction (Read key $\rightarrow$ Compute $\rightarrow$ Write updated value) over $10\,000$ iterations.
+Both baselines and the effect driver execute identical 2-step storage transactions (Read key $\rightarrow$ Compute $\rightarrow$ Write updated value) across 10,000 iterations without artificial `#[inline(never)]` handicaps:
 
-| Dispatch Mechanism | Total Latency (10k ops) | Per-Transaction Latency | Speedup vs `dyn ref` | Memory Indirection |
+### Empirical Results (10,000 iterations per sample)
+
+| Dispatch Mechanism | Total Latency (10k ops) | Per-Transaction Latency | Speedup vs vtable | Memory Indirection |
 | :--- | :---: | :---: | :---: | :---: |
-| **`machine-rs` (`handle_sync` Monomorphic Effect)** | **4.72 µs** | **0.47 ns** | **5.34x faster** | **0 pointer hops** |
-| `dyn_trait_box_vtable` (`Box<dyn StorageService>`) | 7.59 µs | 0.76 ns | 3.32x faster | 1 heap hop + vtable |
-| `dyn_trait_ref_vtable` (`&mut dyn StorageService`) | 25.23 µs | 2.52 ns | Baseline (1.00x) | vtable call indirection |
+| **`machine-rs` (`handle_sync` Monomorphic Effect)** | **6.10 µs** | **0.61 ns** | **3.33x faster** | **0 pointer hops** |
+| `dyn_trait_ref_vtable` (`&mut dyn StorageService`) | 20.34 µs | 2.03 ns | Baseline (1.00x) | vtable call indirection |
+| `dyn_trait_box_vtable` (`Box<dyn StorageService>`) | 20.74 µs | 2.07 ns | 1.02x | 1 heap hop + vtable |
 
 > [!TIP]
-> Monomorphic effect handlers eliminate virtual method tables (`vtable`) entirely. The CPU Branch Target Buffer (BTB) experiences zero indirect branch mispredictions, yielding a **5.34x speedup** over `&mut dyn Trait`.
+> Monomorphic effect handlers inline directly at the callsite. Because calls do not jump through a virtual method table (`vtable`), the CPU Branch Target Buffer (BTB) experiences zero indirect branch mispredictions, resulting in a **3.33x throughput increase**.
 
 ---
 
@@ -60,22 +73,22 @@ Executing a 2-step storage transaction (Read key $\rightarrow$ Compute $\rightar
 
 ### Objective
 
-Compare pure FSM domain logic driven on Tokio via [`handle_async`] against native Rust `async fn / block` compiler-generated state machines, measuring both runtime execution latency and memory footprint (`std::mem::size_of`).
+Compare pure FSM domain logic driven via [`handle_async`] against native Rust `async fn / block` compiler-generated state machines on the Tokio runtime.
 
 ### Benchmark Target
 
-A 3-step asynchronous I/O transaction pipeline (`FetchData` $\rightarrow$ `TransformData` $\rightarrow$ `CommitData`) over 500 batches.
+A 3-step asynchronous I/O transaction pipeline (`FetchData` $\rightarrow$ `TransformData` $\rightarrow$ `CommitData`) across 500 batches.
 
 | Architecture | Struct Footprint (`size_of`) | Cache Line Occupancy | Execution Latency (500 ops) | Function Coloring (`async`) |
 | :--- | :---: | :---: | :---: | :---: |
-| **`machine-rs` (`PipelineFsm` + `handle_async`)** | **16 bytes** | **25% (0.25 cache lines)** | **31.20 µs** (~62.4 ns/op) | **Zero (pure sync FSM)** |
-| Native Tokio `async/await` Future | **56 bytes** | **87.5% (0.87 cache lines)** | **27.17 µs** (~54.3 ns/op) | Required (`async/await`) |
+| **`machine-rs` (`PipelineFsm` + `handle_async`)** | **16 bytes** | **25% (0.25 cache lines)** | **33.30 µs** (~66.6 ns/op) | **Zero (pure sync FSM)** |
+| Native Tokio `async/await` Future | **56 bytes** | **87.5% (0.87 cache lines)** | **27.68 µs** (~55.3 ns/op) | Required (`async/await`) |
 
-### Key Architectural Takeaways
+### Key Architectural Takeaways:
 
-1. **3.5x Smaller Memory Footprint**: Native `async` blocks generated by the Rust compiler capture all registers and local state across yield points (56 bytes). In contrast, the `machine-rs` FSM is strictly packed into **16 bytes**, easily fitting into two 64-bit registers (`RAX`/`RDX`) or a single L1 cache line fraction.
+1. **3.5x Smaller Memory Footprint**: Native `async` blocks generated by the Rust compiler capture all registers and local state across yield points (56 bytes). In contrast, the `machine-rs` FSM is strictly packed into **16 bytes**, easily fitting into two 64-bit registers (`RAX`/`RDX`) or a quarter of an L1 cache line.
 2. **Zero Function Coloring**: Domain logic is written as pure, testable, deterministic state machines without contagious `async` keywords across internal libraries.
-3. **Deterministic Cooperative Abort**: Canceling an effect machine triggers deterministic `close()` cleanup without dropping raw future allocations or risking memory leaks.
+3. **Pure Future Implementation**: `handle_async` returns a zero-cost [`DriveFuture`] that implements `core::future::Future` directly with manual `poll` and an inline fast-path, avoiding recursive compiler-generated `async fn` wrappers.
 
 ---
 

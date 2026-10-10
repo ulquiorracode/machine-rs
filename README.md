@@ -101,8 +101,8 @@ Empirical measurements conducted with [Criterion.rs](https://github.com/bheisler
 
 | Benchmark Domain | `machine-rs` | Baseline (`std` / `dyn` / Tokio) | Delta / Speedup |
 | :--- | :---: | :---: | :---: |
-| **1-Way FSM Generator vs Native Iterator** | **754.23 ps** | 752.24 ps (`core::iter::Iterator`) | **Identical (100% LLVM loop parity)** |
-| **2-Way Sync Effect vs `&mut dyn Trait`** | **4.72 µs** | 25.23 µs (vtable indirect dispatch) | **5.34x faster** (BTB branch-friendly) |
+| **1-Way FSM Generator vs Native Iterator** | **256.64 ns** | 256.90 ns (`core::iter::Iterator`) | **Parity (0.256 ns/step, 100% loop parity)** |
+| **2-Way Sync Effect vs `&mut dyn Trait`** | **6.10 µs** | 20.34 µs (vtable indirect dispatch) | **3.33x faster** (BTB branch-friendly) |
 | **2-Way Async Effect vs Tokio Future (Memory)** | **16 bytes** | 56 bytes (Compiler-generated Future) | **3.5x smaller footprint** |
 | **Heap Allocations on Hot Paths** | **0 bytes** | 0 bytes | **Strictly Zero Heap Allocations** |
 

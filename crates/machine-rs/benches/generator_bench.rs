@@ -52,7 +52,10 @@ fn bench_generator_vs_native_iterator(c: &mut Criterion) {
                 curr: 0,
                 max: black_box(1_000),
             };
-            let sum: u64 = generator.into_iter().sum();
+            let mut sum = 0u64;
+            for val in generator.into_iter() {
+                sum = sum.wrapping_add(black_box(val));
+            }
             black_box(sum)
         })
     });
@@ -63,7 +66,10 @@ fn bench_generator_vs_native_iterator(c: &mut Criterion) {
                 curr: 0,
                 max: black_box(1_000),
             };
-            let sum: u64 = iter.sum();
+            let mut sum = 0u64;
+            for val in iter {
+                sum = sum.wrapping_add(black_box(val));
+            }
             black_box(sum)
         })
     });
