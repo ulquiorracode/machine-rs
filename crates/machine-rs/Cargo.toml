@@ -21,8 +21,18 @@ machine-core = { workspace = true }
 machine-async = { workspace = true, optional = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
 [[bench]]
 name = "generator_bench"
 harness = false
+
+[[bench]]
+name = "sync_effect_vs_dyn_bench"
+harness = false
+
+[[bench]]
+name = "effect_vs_future_bench"
+harness = false
+required-features = ["async"]

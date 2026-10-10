@@ -10,13 +10,14 @@ Universal, Zero-Cost State Machine Kernel for Rust unifying **1-Way Generators/I
 ## The Vision: Unifying Control Flow without Colored Functions
 
 In modern programming languages, control flow is fragmented:
+
 - **Pull streams** are written via `Iterator`.
 - **Generators** are trapped in unstable RFCs (`gen` / `yield`).
 - **I/O & Concurrency** infect codebases with colored `async fn` and runtime locks.
 
 `machine-rs` provides a mathematically unified **FSM Kernel** (`Machine<Yield, Resume, Return>`):
 
-```
+```test
                                   [ Machine<Yield, Resume, Return> ]
                                                   |
                  +--------------------------------+--------------------------------+
@@ -92,11 +93,34 @@ let name = handle_sync(my_machine, |eff| {
 
 ---
 
+---
+
+## Empirical Performance Scoreboard
+
+Empirical measurements conducted with [Criterion.rs](https://github.com/bheisler/criterion.rs) on Stable Rust 1.85+ (detailed analysis in [BENCHMARKS.md](BENCHMARKS.md)):
+
+| Benchmark Domain | `machine-rs` | Baseline (`std` / `dyn` / Tokio) | Delta / Speedup |
+| :--- | :---: | :---: | :---: |
+| **1-Way FSM Generator vs Native Iterator** | **754.23 ps** | 752.24 ps (`core::iter::Iterator`) | **Identical (100% LLVM loop parity)** |
+| **2-Way Sync Effect vs `&mut dyn Trait`** | **4.72 µs** | 25.23 µs (vtable indirect dispatch) | **5.34x faster** (BTB branch-friendly) |
+| **2-Way Async Effect vs Tokio Future (Memory)** | **16 bytes** | 56 bytes (Compiler-generated Future) | **3.5x smaller footprint** |
+| **Heap Allocations on Hot Paths** | **0 bytes** | 0 bytes | **Strictly Zero Heap Allocations** |
+
+See [BENCHMARKS.md](BENCHMARKS.md) for reproduction steps, hardware specifications, and deep architectural commentary.
+
+---
+
 ## Workspace Structure
 
 - [`machine-core`](crates/machine-core): `#![no_std]` core kernel contracts (`Machine`, `Step`, `Generator`, `GenIter`, `Effect`, `ResumeSignal`).
 - [`machine-async`](crates/machine-async): Thread-safe `handle_async` Tokio driver bridge.
 - [`machine-rs`](crates/machine-rs): Root facade re-exporting the full engine and extension traits (`MachineExt`).
+
+---
+
+## Deep Architecture
+
+For memory invariants, register ABI analysis, and theoretical foundations, inspect [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
