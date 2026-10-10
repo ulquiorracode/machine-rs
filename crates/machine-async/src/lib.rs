@@ -77,21 +77,24 @@ where
             }
         }
 
-        // 2. FSM Execution Loop with inline fast-path
+        // 2. FSM Execution Loop with sound in-place pin projection
         loop {
             let sig = this.pending_signal.take().unwrap_or(ResumeSignal::Start);
             match this.machine.step(sig) {
                 Step::Yielded(eff) => {
-                    let mut fut = (this.handler)(eff);
-                    // Fast-path: check immediate completion on local stack frame
-                    // SAFETY: `fut` is pinned to the local stack frame during immediate poll
-                    let mut pinned = unsafe { Pin::new_unchecked(&mut fut) };
-                    match pinned.as_mut().poll(cx) {
+                    // Assign to in-place storage BEFORE polling to ensure sound Pin invariant
+                    this.current_fut = Some((this.handler)(eff));
+                    let fut_ref = this.current_fut.as_mut().unwrap();
+                    // SAFETY: `fut_ref` is pinned in its final destination in `this.current_fut`
+                    let pinned = unsafe { Pin::new_unchecked(fut_ref) };
+                    match pinned.poll(cx) {
                         Poll::Ready(Some(resp)) => {
+                            this.current_fut = None;
                             this.pending_signal = Some(ResumeSignal::Resume(resp));
                             continue;
                         }
                         Poll::Ready(None) => {
+                            this.current_fut = None;
                             let abort_step = this.machine.step(ResumeSignal::Abort);
                             debug_assert!(
                                 matches!(abort_step, Step::Done(_)),
@@ -102,7 +105,6 @@ where
                             return Poll::Ready(None);
                         }
                         Poll::Pending => {
-                            this.current_fut = Some(fut);
                             return Poll::Pending;
                         }
                     }

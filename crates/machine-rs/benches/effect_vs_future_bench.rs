@@ -78,12 +78,18 @@ impl Machine for PipelineFsm {
 }
 
 struct DirectIoHandler {
-    yielded: bool,
+    yielded_fetch: bool,
+    yielded_transform: bool,
+    yielded_commit: bool,
 }
 
 impl DirectIoHandler {
     pub const fn new() -> Self {
-        Self { yielded: false }
+        Self {
+            yielded_fetch: false,
+            yielded_transform: false,
+            yielded_commit: false,
+        }
     }
 }
 
@@ -94,16 +100,31 @@ impl AsyncEffectHandler<AsyncIoEffect> for DirectIoHandler {
         eff: &AsyncIoEffect,
         cx: &mut core::task::Context<'_>,
     ) -> core::task::Poll<Option<u64>> {
-        if !self.yielded {
-            self.yielded = true;
-            cx.waker().wake_by_ref();
-            return core::task::Poll::Pending;
-        }
-        self.yielded = false;
         match eff {
-            AsyncIoEffect::Fetch(id) => core::task::Poll::Ready(Some(id + 1)),
-            AsyncIoEffect::Transform(val) => core::task::Poll::Ready(Some(val * 2)),
-            AsyncIoEffect::Commit(val) => core::task::Poll::Ready(Some(val + 10)),
+            AsyncIoEffect::Fetch(id) => {
+                if !self.yielded_fetch {
+                    self.yielded_fetch = true;
+                    cx.waker().wake_by_ref();
+                    return core::task::Poll::Pending;
+                }
+                core::task::Poll::Ready(Some(id + 1))
+            }
+            AsyncIoEffect::Transform(val) => {
+                if !self.yielded_transform {
+                    self.yielded_transform = true;
+                    cx.waker().wake_by_ref();
+                    return core::task::Poll::Pending;
+                }
+                core::task::Poll::Ready(Some(val * 2))
+            }
+            AsyncIoEffect::Commit(val) => {
+                if !self.yielded_commit {
+                    self.yielded_commit = true;
+                    cx.waker().wake_by_ref();
+                    return core::task::Poll::Pending;
+                }
+                core::task::Poll::Ready(Some(val + 10))
+            }
         }
     }
 }
