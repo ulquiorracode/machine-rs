@@ -297,8 +297,58 @@ fn test_either_coproduct_dispatch_with_combined_handlers() {
         Some(true)
     };
 
-    let combined = combine_handlers(read_handler, write_handler);
+    // Use fluent .or_else() chaining
+    let combined = read_handler.or_else(write_handler);
     let result = handle_sync(machine, combined);
 
     assert_eq!(result, Some(42));
+}
+
+// 3-way nested coproduct verifying type-level Peano CoproductInject without nested constructor brackets
+struct LogEffect(&'static str);
+impl Effect for LogEffect {
+    type Response = ();
+}
+
+struct MetricEffect(&'static str, f64);
+impl Effect for MetricEffect {
+    type Response = ();
+}
+
+struct AlertEffect(&'static str);
+impl Effect for AlertEffect {
+    type Response = bool;
+}
+
+type ThreeWayCoproduct = Either<LogEffect, Either<MetricEffect, Either<AlertEffect, Nil>>>;
+
+#[test]
+fn test_peano_coproduct_inject_without_nested_brackets() {
+    // 1. Inject into Left (first level)
+    let eff1: ThreeWayCoproduct = LogEffect("hello").inject();
+    assert!(matches!(eff1, Either::Left(_)));
+
+    // 2. Inject into Right -> Left (second level) without writing Either::Right(Either::Left(...))
+    let eff2: ThreeWayCoproduct = MetricEffect("cpu", 99.5).inject();
+    assert!(matches!(eff2, Either::Right(Either::Left(_))));
+
+    // 3. Inject into Right -> Right -> Left (third level)
+    let eff3: ThreeWayCoproduct = AlertEffect("overheating").inject();
+    assert!(matches!(
+        eff3,
+        Either::Right(Either::Right(Either::Left(_)))
+    ));
+}
+
+#[test]
+fn test_flat_match_coproduct_macro() {
+    let eff: ThreeWayCoproduct = MetricEffect("fps", 144.0).inject();
+
+    let matched_kind = match_coproduct!(eff,
+        LogEffect(msg) => format!("log: {}", msg),
+        MetricEffect(key, val) => format!("metric: {}={}", key, val),
+        AlertEffect(alert) => format!("alert: {}", alert),
+    );
+
+    assert_eq!(matched_kind, "metric: fps=144");
 }

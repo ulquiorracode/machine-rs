@@ -7,8 +7,9 @@
 
 // Explicit re-exports rather than wildcard glob
 pub use machine_core::{
-    Effect, Either, GenIter, Generator, IntoLeft, IntoRight, Machine, MachineExt, ResumeSignal,
-    Step, combine_handlers, handle_sync, match_effect,
+    CoproductInject, Effect, Either, GenIter, Generator, HandlerExt, InjectExt, IntoLeft,
+    IntoRight, Machine, MachineExt, Nil, ResumeSignal, Step, combine_handlers, handle_sync,
+    match_coproduct, match_effect,
 };
 
 #[cfg(feature = "async")]
