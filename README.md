@@ -103,6 +103,7 @@ Empirical measurements conducted with [Criterion.rs](https://github.com/bheisler
 | :--- | :---: | :---: | :---: |
 | **1-Way FSM Generator vs Native Iterator** | **256.64 ns** | 256.90 ns (`core::iter::Iterator`) | **Parity (0.256 ns/step, 100% loop parity)** |
 | **2-Way Sync Effect vs `&mut dyn Trait`** | **6.10 µs** | 20.34 µs (vtable indirect dispatch) | **3.33x faster** (BTB branch-friendly) |
+| **2-Way Async Effect vs Tokio Future (Latency)** | **24.55 µs** | 28.33 µs (Compiler-generated Future) | **1.15x faster (+15.4% throughput)** |
 | **2-Way Async Effect vs Tokio Future (Memory)** | **16 bytes** | 56 bytes (Compiler-generated Future) | **3.5x smaller footprint** |
 | **Heap Allocations on Hot Paths** | **0 bytes** | 0 bytes | **Strictly Zero Heap Allocations** |
 

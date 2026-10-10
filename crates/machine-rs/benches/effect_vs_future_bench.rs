@@ -77,6 +77,37 @@ impl Machine for PipelineFsm {
     }
 }
 
+struct DirectIoHandler {
+    yielded: bool,
+}
+
+impl DirectIoHandler {
+    pub const fn new() -> Self {
+        Self { yielded: false }
+    }
+}
+
+impl AsyncEffectHandler<AsyncIoEffect> for DirectIoHandler {
+    #[inline(always)]
+    fn poll_effect(
+        &mut self,
+        eff: &AsyncIoEffect,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<u64>> {
+        if !self.yielded {
+            self.yielded = true;
+            cx.waker().wake_by_ref();
+            return core::task::Poll::Pending;
+        }
+        self.yielded = false;
+        match eff {
+            AsyncIoEffect::Fetch(id) => core::task::Poll::Ready(Some(id + 1)),
+            AsyncIoEffect::Transform(val) => core::task::Poll::Ready(Some(val * 2)),
+            AsyncIoEffect::Commit(val) => core::task::Poll::Ready(Some(val + 10)),
+        }
+    }
+}
+
 // ============================================================================
 // 2. NATIVE TOKIO ASYNC/AWAIT FUTURE
 // ============================================================================
@@ -142,6 +173,22 @@ fn bench_effect_vs_future(c: &mut Criterion) {
                         }
                     })
                     .await;
+                    total = total.wrapping_add(res.unwrap_or(0));
+                }
+                black_box(total)
+            });
+        },
+    );
+
+    group.bench_function(
+        BenchmarkId::new("machine_rs_handle_async_direct", batch_size),
+        |b| {
+            b.to_async(&rt).iter(|| async {
+                let mut total = 0u64;
+                for i in 0..batch_size {
+                    let fsm = PipelineFsm::new(black_box(i));
+                    let handler = DirectIoHandler::new();
+                    let res = handle_async_direct(fsm, handler).await;
                     total = total.wrapping_add(res.unwrap_or(0));
                 }
                 black_box(total)

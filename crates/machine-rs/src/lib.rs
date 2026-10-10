@@ -11,14 +11,16 @@ pub use machine_core::{
 };
 
 #[cfg(feature = "async")]
-pub use machine_async::handle_async;
+pub use machine_async::{AsyncEffectHandler, DriveDirectFuture, handle_async, handle_async_direct};
 
 /// Common prelude for `machine-rs`.
 pub mod prelude {
     pub use machine_core::prelude::*;
 
     #[cfg(feature = "async")]
-    pub use machine_async::handle_async;
+    pub use machine_async::{
+        AsyncEffectHandler, DriveDirectFuture, handle_async, handle_async_direct,
+    };
 }
 
 #[cfg(test)]
