@@ -152,3 +152,55 @@ async fn test_async_panic_in_handler_drops_machine_cleanly() {
         "Machine must be dropped upon task unwinding"
     );
 }
+
+struct AsyncCounterGen {
+    curr: u64,
+    limit: u64,
+}
+
+impl Machine for AsyncCounterGen {
+    type Yield = u64;
+    type Resume = ();
+    type Return = ();
+
+    fn step(&mut self, _resume: ()) -> Step<Self::Yield, Self::Return> {
+        if self.curr < self.limit {
+            let val = self.curr;
+            self.curr += 1;
+            Step::Yielded(val)
+        } else {
+            Step::Done(())
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_gen_stream_collect_and_fused() {
+    use futures_util::StreamExt;
+    use machine_async::MachineAsyncExt;
+
+    let generator = AsyncCounterGen { curr: 0, limit: 5 };
+    let mut stream = generator.into_stream();
+
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item);
+    }
+
+    assert_eq!(items, vec![0, 1, 2, 3, 4]);
+    // Test fused property
+    assert_eq!(stream.next().await, None);
+    assert_eq!(stream.next().await, None);
+}
+
+#[tokio::test]
+async fn test_gen_stream_empty_immediate_done() {
+    use futures_util::StreamExt;
+    use machine_async::MachineAsyncExt;
+
+    let generator = AsyncCounterGen { curr: 5, limit: 5 };
+    let mut stream = generator.into_stream();
+
+    assert_eq!(stream.next().await, None);
+    assert_eq!(stream.next().await, None);
+}

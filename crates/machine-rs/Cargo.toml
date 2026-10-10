@@ -22,6 +22,7 @@ machine-async = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+futures-util = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
 [[bench]]
@@ -36,3 +37,9 @@ harness = false
 name = "effect_vs_future_bench"
 harness = false
 required-features = ["async"]
+
+[[bench]]
+name = "stream_bench"
+harness = false
+required-features = ["async"]
+

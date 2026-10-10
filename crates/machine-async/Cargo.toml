@@ -13,7 +13,10 @@ readme = "README.md"
 
 [dependencies]
 machine-core = { workspace = true }
+futures-core = { workspace = true }
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
+futures-util = { workspace = true }
 tokio = { workspace = true }
+

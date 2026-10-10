@@ -11,14 +11,15 @@
 - [x] Adversarial edge-case stress test suite (unwind safety, empty generator, multi-step chain).
 - [x] Production Criterion benchmarks: 1-way generator parity, 2-way sync effect vs dyn (5.34x speedup), async effect vs Tokio future.
 
-## Milestone v0.2.0 — Typed Open Effect Sums & Composition
+## Milestone v0.2.0 — Typed Open Effect Sums, Streams & Composition (Current)
 
-- [ ] Row polymorphism / extensible open effect coproducts without manual monolithic enums.
-- [ ] GAT-based typed resume channels without downcasting.
-- [ ] Ergonomic declarative FSM construction macros.
+- [x] Stream projection: `GenStream` and `into_stream()` implementing `futures_core::Stream` for zero-cost async streaming.
+- [x] Row polymorphism / extensible open effect coproducts (`Either<A, B>`) without manual monolithic enums.
+- [x] Typed resume channels with composable branched handlers (`combine_handlers`).
+- [x] Ergonomic declarative effect dispatch macros (`match_effect!`).
+- [x] Production Criterion benchmarks for stream throughput (`stream_bench` beating `futures::stream::iter`).
 
 ## Milestone v0.3.0 — Systems & Pipeline Integration
 
 - [ ] Seamless integration adapter for `stitch-rs` Sewing Machine Architecture (SMA) U-cycle pipelines.
 - [ ] Native GoldSrc.rs plugin effect host.
-- [ ] High-throughput streaming adapters over `core::iter::Iterator`.

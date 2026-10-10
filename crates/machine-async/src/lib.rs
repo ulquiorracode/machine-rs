@@ -3,7 +3,15 @@
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use machine_core::{Effect, Machine, ResumeSignal, Step};
+use machine_core::{Effect, Generator, Machine, ResumeSignal, Step};
+
+pub mod prelude {
+    pub use crate::{
+        AsyncEffectHandler, DriveDirectFuture, DriveFuture, GenStream, MachineAsyncExt,
+        handle_async, handle_async_direct,
+    };
+    pub use machine_core::prelude::*;
+}
 
 /// A zero-cost, stackless [`Future`] driving an effectful [`Machine`] to completion.
 ///
@@ -255,6 +263,78 @@ where
 {
     DriveDirectFuture::new(machine, handler)
 }
+
+// ============================================================================
+// STREAM ADAPTER FOR 1-WAY GENERATORS
+// ============================================================================
+
+/// Zero-cost adapter projecting any [`Generator`] into a [`futures_core::Stream`].
+///
+/// Features fused termination and 1-way register execution without allocations.
+pub struct GenStream<G> {
+    machine: G,
+    is_done: bool,
+}
+
+impl<G: Generator> GenStream<G> {
+    /// Constructs a new streaming adapter from a generator.
+    #[inline(always)]
+    pub const fn new(machine: G) -> Self {
+        Self {
+            machine,
+            is_done: false,
+        }
+    }
+
+    /// Consumes the adapter, returning the underlying state machine.
+    #[inline(always)]
+    pub fn into_inner(self) -> G {
+        self.machine
+    }
+}
+
+impl<G: Generator> futures_core::Stream for GenStream<G> {
+    type Item = G::Yield;
+
+    #[inline]
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // SAFETY: `machine` is pinned in-place inside `GenStream` and never moved out.
+        let this = unsafe { self.get_unchecked_mut() };
+
+        if this.is_done {
+            return Poll::Ready(None);
+        }
+
+        match this.machine.step(()) {
+            Step::Yielded(val) => Poll::Ready(Some(val)),
+            Step::Done(_) => {
+                this.is_done = true;
+                Poll::Ready(None)
+            }
+        }
+    }
+}
+
+impl<G: Generator> futures_core::FusedStream for GenStream<G> {
+    #[inline(always)]
+    fn is_terminated(&self) -> bool {
+        self.is_done
+    }
+}
+
+/// Extension trait providing streaming adapters for [`Machine`].
+pub trait MachineAsyncExt: Machine {
+    /// Projects a 1-way generator into a zero-cost [`futures_core::Stream`].
+    #[inline(always)]
+    fn into_stream(self) -> GenStream<Self>
+    where
+        Self: Sized + Generator,
+    {
+        GenStream::new(self)
+    }
+}
+
+impl<M: ?Sized + Machine> MachineAsyncExt for M {}
 
 #[cfg(test)]
 mod tests {
