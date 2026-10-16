@@ -21,7 +21,7 @@ machine-core = { path = "crates/machine-core", version = "0.1.0" }
 machine-async = { path = "crates/machine-async", version = "0.1.0" }
 machine-rs = { path = "crates/machine", version = "0.1.0" }
 
-criterion = "0.5"
+criterion = "0.8"
 futures-core = { version = "0.3", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 tokio = { version = "1.43", default-features = false, features = ["macros", "rt", "sync"] }
