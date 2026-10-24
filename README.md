@@ -1,9 +1,13 @@
 # Machine RS (`machine-rs`)
 
-[![CI](https://github.com/ulquiorracode/machine-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ulquiorracode/machine-rs/actions)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+<!-- Project Status & Metrics -->
+![Status](https://img.shields.io/badge/status-active%20development-orange?logo=rust) [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE) [![CI](https://github.com/ulquiorracode/machine-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ulquiorracode/machine-rs/actions) [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?logo=readme)](https://github.com/RichardLitt/standard-readme)  
+<!-- Repository & Community -->
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md) [![MSRV: 1.85.0](https://img.shields.io/badge/MSRV-1.85.0-blue.svg?logo=rust)](https://doc.rust-lang.org/edition-guide/rust-2024/) [![no_std](https://img.shields.io/badge/no__std-compatible-brightgreen.svg)](crates/machine-core)  
+<!-- Targets -->
+![Targets: Windows | Linux | macOS](https://img.shields.io/badge/targets-windows%20%7C%20linux%20%7C%20macos-lightgray.svg?logo=linux&logoColor=black)
 
-Universal, Zero-Cost State Machine Kernel for Rust unifying **1-Way Generators/Iterators** and **2-Way Algebraic Effects/Futures** under a single monomorphic finite state machine.
+> Universal, Zero-Cost State Machine Kernel for Rust unifying **1-Way Generators/Iterators** and **2-Way Algebraic Effects/Futures** under a single monomorphic finite state machine.
 
 ---
 
