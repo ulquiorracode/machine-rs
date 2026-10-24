@@ -3,9 +3,10 @@
 //! Evaluates the execution throughput and latency of machine-rs 1-Way Generator
 //! stream projection against standard async stream implementations.
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use futures_util::StreamExt;
 use machine_rs::prelude::*;
+use std::hint::black_box;
 use tokio::runtime::Runtime;
 
 struct StreamCounterGen {

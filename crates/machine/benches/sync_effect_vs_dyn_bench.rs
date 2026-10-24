@@ -1,5 +1,6 @@
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use machine_rs::prelude::*;
+use std::hint::black_box;
 
 // ============================================================================
 // 1. MACHINE-RS 2-WAY EFFECT FSM
