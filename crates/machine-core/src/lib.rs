@@ -9,6 +9,11 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "builder")]
+pub mod builder;
+#[cfg(feature = "builder")]
+pub use builder::{FnMachine, MachineBuilder};
+
 // ============================================================================
 // 1. UNIVERSAL KERNEL PRIMITIVES
 // ============================================================================

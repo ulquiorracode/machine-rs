@@ -12,8 +12,9 @@ categories.workspace = true
 readme = "README.md"
 
 [features]
-default = ["std"]
+default = ["std", "builder"]
 std = []
+builder = []
 stitch = ["dep:stitch-core"]
 
 [dependencies]
