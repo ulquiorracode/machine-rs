@@ -1,9 +1,10 @@
 //! # Tier 2: Fluent Builder API for Finite State Machines
 //!
-//! Provides [`MachineBuilder`] for constructing executable [`Machine`] and [`Generator`]
+//! Provides [`MachineBuilder`] for constructing executable [`Machine`] and [`Generator`](crate::Generator)
 //! instances programmatically with zero heap allocations.
 
 use core::marker::PhantomData;
+
 use crate::{Machine, Step};
 
 /// An executable [`Machine`] backed by a transition closure.
@@ -70,7 +71,7 @@ impl<State> MachineBuilder<State> {
         }
     }
 
-    /// Connects a 1-way generator function (`Resume = ()`), constructing an executable [`Generator`].
+    /// Connects a 1-way generator function (`Resume = ()`), constructing an executable [`Generator`](crate::Generator).
     #[allow(clippy::type_complexity)]
     #[inline(always)]
     pub fn generator<Yield, Return, F>(
@@ -90,14 +91,15 @@ mod tests {
 
     #[test]
     fn test_machine_builder_basic() {
-        let mut machine = MachineBuilder::new(0usize).transition(|state, event: &str| match event {
-            "inc" => {
-                *state += 1;
-                Step::Yielded(*state)
-            }
-            "stop" => Step::Done(*state),
-            _ => Step::Yielded(*state),
-        });
+        let mut machine =
+            MachineBuilder::new(0usize).transition(|state, event: &str| match event {
+                "inc" => {
+                    *state += 1;
+                    Step::Yielded(*state)
+                }
+                "stop" => Step::Done(*state),
+                _ => Step::Yielded(*state),
+            });
 
         assert_eq!(machine.step("inc"), Step::Yielded(1));
         assert_eq!(machine.step("inc"), Step::Yielded(2));
