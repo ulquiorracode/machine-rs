@@ -12,8 +12,9 @@ categories.workspace = true
 readme = "README.md"
 
 [features]
-default = ["std", "derive"]
+default = ["std", "derive", "builder"]
 std = ["machine-core/std"]
+builder = ["machine-core/builder"]
 async = ["dep:machine-async"]
 derive = ["dep:machine-derive"]
 stitch = ["machine-core/stitch"]
@@ -28,6 +29,10 @@ criterion = { workspace = true, features = ["async_tokio"] }
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 stitch-core = { workspace = true }
+
+[[test]]
+name = "stitch_bridge_test"
+required-features = ["stitch"]
 
 [[bench]]
 name = "generator_bench"

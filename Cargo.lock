@@ -266,7 +266,7 @@ checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "machine-async"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -276,14 +276,14 @@ dependencies = [
 
 [[package]]
 name = "machine-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "stitch-core",
 ]
 
 [[package]]
 name = "machine-derive"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "machine-rs"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "futures-util",
